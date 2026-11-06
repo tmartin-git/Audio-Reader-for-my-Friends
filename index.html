@@ -145,7 +145,23 @@
         /* --- Memory Bank LEDs --- */
         .memory-bank {
             touch-action: none;
+            -webkit-touch-callout: none; /* Prevents iOS context menu on long press */
+            -webkit-user-select: none;   /* Prevents component highlighting */
+            user-select: none;
+            position: relative;          /* Anchor for the expanded touch target */
         }
+        
+        /* Expands the invisible clickable area to mobile standards (~46px) */
+        .memory-bank::after {
+            content: '';
+            position: absolute;
+            top: -15px;
+            right: -15px;
+            bottom: -15px;
+            left: -15px;
+            border-radius: 50%;
+        }
+
         @keyframes flash-led {
             0% { background-color: #fff; box-shadow: 0 0 15px #fff; transform: scale(1.2); }
             100% { background-color: #8b5cf6; box-shadow: 0 0 8px rgba(139,92,246,0.6); transform: scale(1); }
@@ -272,13 +288,14 @@
             <div class="flex items-center gap-3 flex-wrap mt-3 sm:mt-0">
                 <!-- Memory Banks (Presets) -->
                 <div class="flex flex-col items-center justify-center mr-2 border-r border-slate-700 pr-4">
-                    <div class="flex items-center gap-2">
+                    <!-- Changed gap-2 to gap-5 to accommodate the larger touch targets -->
+                    <div class="flex items-center gap-5">
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="0"></button>
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="1"></button>
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="2"></button>
                     </div>
                     <span class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Hold to save &bull; Tap to load</span>
-                </div>
+                </div>                 
 
                 <label class="text-xs text-slate-400 flex items-center gap-1 cursor-pointer">
                     <input type="checkbox" id="loop-indefinitely" class="rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500" checked>
@@ -416,7 +433,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.0.0 &bull; November 2026
+                Version 1.0.1 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
