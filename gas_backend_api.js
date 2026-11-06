@@ -1,6 +1,7 @@
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('advanced_mp3_player')
       .setTitle('Audio Reader for my Friends')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1') // <-- Required for mobile responsiveness
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
