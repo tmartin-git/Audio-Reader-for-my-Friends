@@ -433,7 +433,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.0.1 &bull; November 2026
+                Version 1.1.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -537,6 +537,91 @@
         let memoryBanks = [null, null, null];
         let memoryTimer = null;
         let memoryActionDone = false;
+
+// --- Keyboard Shortcuts ---
+        window.addEventListener('keydown', (e) => {
+            // Ignore shortcuts if the user is typing in a search box or text input
+            const activeTag = document.activeElement.tagName;
+            if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') {
+                return;
+            }
+
+            switch (e.key) {
+                case ' ': // Space: Play / Pause
+                    e.preventDefault(); // Prevent page from scrolling
+                    els.playBtn.click();
+                    break;
+                case 'ArrowLeft': // Rewind
+                    e.preventDefault();
+                    els.btnBack.click();
+                    break;
+                case 'ArrowRight': // Forward
+                    e.preventDefault();
+                    els.btnFwd.click();
+                    break;
+                case 'ArrowUp': // Start of track
+                    e.preventDefault();
+                    els.audio.currentTime = 0;
+                    break;
+                case 'ArrowDown': // End of track
+                    e.preventDefault();
+                    if (els.audio.duration) els.audio.currentTime = els.audio.duration - 0.1;
+                    break;
+                case 'PageUp': // Previous track
+                    e.preventDefault();
+                    if (currentFileIndex > 0) {
+                        for (let i = currentFileIndex - 1; i >= 0; i--) {
+                            if (!playlistFiles[i].disabled) { playTrack(i); break; }
+                        }
+                    }
+                    break;
+                case 'PageDown': // Next track
+                    e.preventDefault();
+                    els.btnNext.click();
+                    break;
+                case 'a':
+                case 'A': // Set A
+                    els.btnSetA.click();
+                    break;
+                case 'b':
+                case 'B': // Set B
+                    els.btnSetB.click();
+                    break;
+                case '1':
+                case '2':
+                case '3':
+                    // Memory Banks: 1, 2, 3 to load | Shift + 1, 2, 3 to save
+                    e.preventDefault();
+                    const bankIndex = parseInt(e.key) - 1;
+                    
+                    if (e.shiftKey) {
+                        // Save to memory bank
+                        if (currentFileIndex >= 0 && (loopA !== null || loopB !== null)) {
+                            memoryBanks[bankIndex] = { a: loopA, b: loopB };
+                            const filename = playlistFiles[currentFileIndex].file.name;
+                            localStorage.setItem(`mp3_banks_${filename}`, JSON.stringify(memoryBanks));
+                            updateMemoryBankUI();
+                            
+                            // Flash the corresponding UI LED to confirm save
+                            const btn = document.querySelector(`.memory-bank[data-bank="${bankIndex}"]`);
+                            if (btn) {
+                                btn.classList.remove('flash-led');
+                                void btn.offsetWidth; // Trigger reflow to restart animation
+                                btn.classList.add('flash-led');
+                            }
+                        }
+                    } else {
+                        // Load from memory bank
+                        if (memoryBanks[bankIndex] !== null) {
+                            loopA = memoryBanks[bankIndex].a;
+                            loopB = memoryBanks[bankIndex].b;
+                            if (loopA !== null) els.audio.currentTime = loopA;
+                            updateDualSliderUI();
+                        }
+                    }
+                    break;
+            }
+        });
 
         // --- Initialization & Local Storage ---
         function init() {
