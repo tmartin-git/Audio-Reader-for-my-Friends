@@ -451,7 +451,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.4.0 &bull; November 2026
+                Version 1.5.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -931,13 +931,23 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
 
         async function playTrack(index) {
             if (index < 0 || index >= playlistFiles.length || playlistFiles[index].disabled) return;
+            
+            // Save the current A-B selection to the active track in memory before switching
+            if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
+                playlistFiles[currentFileIndex].loopA = loopA;
+                playlistFiles[currentFileIndex].loopB = loopB;
+            }
+
             currentFileIndex = index;
             const file = playlistFiles[index].file;
             els.title.innerText = file.name;
-            renderPlaylist(); clearLoop();
+            renderPlaylist(); 
             
-            els.audio.src = URL.createObjectURL(file);
-            els.audio.load();
+            // Restore the previous A-B selection for the newly selected track
+            loopA = playlistFiles[index].loopA !== undefined ? playlistFiles[index].loopA : null;
+            loopB = playlistFiles[index].loopB !== undefined ? playlistFiles[index].loopB : null;
+            
+            els.audio.src = URL.createObjectURL(file);            els.audio.load();
             els.audio.play().catch(e => console.log("Playback blocked until interacted"));
             updatePlayState();
 
@@ -985,6 +995,9 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
                         isLoopPausing = true; els.audio.pause();
                         setTimeout(() => { els.audio.currentTime = loopA; els.audio.play(); isLoopPausing = false; }, pauseTime);
                     } else { els.audio.currentTime = loopA; }
+                } else {
+                    // Play next track if repeat checkbox is not set
+                    playNextValidTrack(currentFileIndex + 1);
                 }
             }
         });
