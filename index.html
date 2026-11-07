@@ -311,7 +311,8 @@
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="1"></button>
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="2"></button>
                     </div>
-                    <span class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Hold: Save &bull; Tap: Load &bull; Dbl-click: Pin/Unpin</span>
+                    <span class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Hold: Save &bull; Tap: Load</span>
+                    <span class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Dbl-click: Pin/Unpin</span>
                 </div>                 
 
                 <label class="text-xs text-slate-400 flex items-center gap-1 cursor-pointer">
@@ -450,7 +451,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.3.0 &bull; November 2026
+                Version 1.4.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -681,8 +682,9 @@
             const savedGlobalBanks = localStorage.getItem('mp3_global_banks');
             if (savedGlobalBanks) { try { globalMemoryBanks = JSON.parse(savedGlobalBanks); } catch(e){} }
 
-            document.querySelectorAll('.memory-bank').forEach((btn) => {
+document.querySelectorAll('.memory-bank').forEach((btn) => {
                 const idx = parseInt(btn.getAttribute('data-bank'));
+                let lastTapTime = 0; // Tracks taps for mobile double-tap detection
                 
                 const handlePointerDown = (e) => {
                     if (e.button !== 0 && e.type === 'pointerdown') return;
@@ -719,11 +721,47 @@
                 const handlePointerUp = (e) => {
                     btn.releasePointerCapture(e.pointerId);
                     if (memoryTimer) clearTimeout(memoryTimer);
-                    if (!memoryActionDone && memoryBanks[idx] !== null) {
-                        loopA = memoryBanks[idx].a;
-                        loopB = memoryBanks[idx].b;
-                        if (loopA !== null) els.audio.currentTime = loopA;
-                        updateDualSliderUI();
+                    
+                    if (!memoryActionDone) {
+                        const now = Date.now();
+                        const timeSinceLastTap = now - lastTapTime;
+                        
+                        // Check if this tap happened within 400ms of the last tap
+                        if (timeSinceLastTap < 400 && timeSinceLastTap > 0) {
+                            // --- DOUBLE TAP DETECTED (Works on Mobile & Desktop) ---
+                            lastTapTime = 0; // Reset timer
+                            pinnedBanks[idx] = !pinnedBanks[idx];
+                            
+                            if (pinnedBanks[idx]) {
+                                // Pinning
+                                globalMemoryBanks[idx] = memoryBanks[idx] || { a: loopA, b: loopB };
+                                memoryBanks[idx] = globalMemoryBanks[idx];
+                                localStorage.setItem('mp3_global_banks', JSON.stringify(globalMemoryBanks));
+                            } else {
+                                // Unpinning
+                                if (currentFileIndex >= 0) {
+                                    const filename = playlistFiles[currentFileIndex].file.name;
+                                    const savedBanks = localStorage.getItem(`mp3_banks_${filename}`);
+                                    let localBanks = [null, null, null];
+                                    if (savedBanks) { try { localBanks = JSON.parse(savedBanks); } catch(err) {} }
+                                    memoryBanks[idx] = localBanks[idx];
+                                } else {
+                                    memoryBanks[idx] = null;
+                                }
+                            }
+                            localStorage.setItem('mp3_pinned_states', JSON.stringify(pinnedBanks));
+                            updateMemoryBankUI();
+                            
+                        } else {
+                            // --- SINGLE TAP DETECTED ---
+                            lastTapTime = now;
+                            if (memoryBanks[idx] !== null) {
+                                loopA = memoryBanks[idx].a;
+                                loopB = memoryBanks[idx].b;
+                                if (loopA !== null) els.audio.currentTime = loopA;
+                                updateDualSliderUI();
+                            }
+                        }
                     }
                 };
                 
@@ -732,34 +770,8 @@
                 btn.addEventListener('pointerdown', handlePointerDown);
                 btn.addEventListener('pointerup', handlePointerUp);
                 btn.addEventListener('pointercancel', handlePointerCancel);
-                
-                // Double-click interaction for Pinning/Unpinning
-                btn.addEventListener('dblclick', (e) => {
-                    e.preventDefault();
-                    pinnedBanks[idx] = !pinnedBanks[idx];
-                    
-                    if (pinnedBanks[idx]) {
-                        // Pinning
-                        globalMemoryBanks[idx] = memoryBanks[idx] || { a: loopA, b: loopB };
-                        memoryBanks[idx] = globalMemoryBanks[idx];
-                        localStorage.setItem('mp3_global_banks', JSON.stringify(globalMemoryBanks));
-                    } else {
-                        // Unpinning
-                        if (currentFileIndex >= 0) {
-                            const filename = playlistFiles[currentFileIndex].file.name;
-                            const savedBanks = localStorage.getItem(`mp3_banks_${filename}`);
-                            let localBanks = [null, null, null];
-                            if (savedBanks) { try { localBanks = JSON.parse(savedBanks); } catch(e) {} }
-                            memoryBanks[idx] = localBanks[idx];
-                        } else {
-                            memoryBanks[idx] = null;
-                        }
-                    }
-                    localStorage.setItem('mp3_pinned_states', JSON.stringify(pinnedBanks));
-                    updateMemoryBankUI();
-                });
             });
-            
+
             updateMemoryBankUI();
             
             if (isGAS) setupGoogleDriveIntegration();
