@@ -166,8 +166,15 @@
             0% { background-color: #fff; box-shadow: 0 0 15px #fff; transform: scale(1.2); }
             100% { background-color: #8b5cf6; box-shadow: 0 0 8px rgba(139,92,246,0.6); transform: scale(1); }
         }
+        @keyframes flash-led-amber {
+            0% { background-color: #fff; box-shadow: 0 0 15px #fff; transform: scale(1.2); }
+            100% { background-color: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.6); transform: scale(1); }
+        }
         .flash-led {
             animation: flash-led 0.4s ease-out;
+        }
+        .flash-led-amber {
+            animation: flash-led-amber 0.4s ease-out;
         }
         .led-filled {
             background-color: #8b5cf6;
@@ -183,6 +190,16 @@
             background-color: #a78bfa;
             border-color: #a78bfa;
             box-shadow: 0 0 0 2px #0f172a, 0 0 0 4px #a78bfa, 0 0 12px rgba(167, 139, 250, 0.8);
+        }
+        .led-pinned-filled {
+            background-color: #f59e0b;
+            border-color: #f59e0b;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+        }
+        .led-pinned-active {
+            background-color: #fbbf24;
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 2px #0f172a, 0 0 0 4px #fbbf24, 0 0 12px rgba(251, 191, 36, 0.8);
         }
     </style>
 </head>
@@ -294,7 +311,7 @@
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="1"></button>
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="2"></button>
                     </div>
-                    <span class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Hold to save &bull; Tap to load</span>
+                    <span class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Hold: Save &bull; Tap: Load &bull; Dbl-click: Pin/Unpin</span>
                 </div>                 
 
                 <label class="text-xs text-slate-400 flex items-center gap-1 cursor-pointer">
@@ -427,13 +444,13 @@
     <div id="about-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 sm:p-6 max-w-sm w-full mx-4 transform transition-all flex flex-col">
             <h3 class="text-xl font-bold text-white mb-1 flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 About Audio Reader
             </h3>
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.2.0 &bull; November 2026
+                Version 1.3.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -537,6 +554,10 @@
         let memoryBanks = [null, null, null];
         let memoryTimer = null;
         let memoryActionDone = false;
+        
+        // Global Pinning State
+        let pinnedBanks = [false, false, false];
+        let globalMemoryBanks = [null, null, null];
 
 // --- Keyboard Shortcuts ---
         window.addEventListener('keydown', (e) => {
@@ -598,16 +619,27 @@
                         // Save to memory bank
                         if (currentFileIndex >= 0 && (loopA !== null || loopB !== null)) {
                             memoryBanks[bankIndex] = { a: loopA, b: loopB };
-                            const filename = playlistFiles[currentFileIndex].file.name;
-                            localStorage.setItem(`mp3_banks_${filename}`, JSON.stringify(memoryBanks));
+                            
+                            if (pinnedBanks[bankIndex]) {
+                                globalMemoryBanks[bankIndex] = memoryBanks[bankIndex];
+                                localStorage.setItem('mp3_global_banks', JSON.stringify(globalMemoryBanks));
+                            } else {
+                                const filename = playlistFiles[currentFileIndex].file.name;
+                                let localBanks = [null, null, null];
+                                const savedBanks = localStorage.getItem(`mp3_banks_${filename}`);
+                                if (savedBanks) { try { localBanks = JSON.parse(savedBanks); } catch(e) {} }
+                                localBanks[bankIndex] = memoryBanks[bankIndex];
+                                localStorage.setItem(`mp3_banks_${filename}`, JSON.stringify(localBanks));
+                            }
+                            
                             updateMemoryBankUI();
                             
                             // Flash the corresponding UI LED to confirm save
                             const btn = document.querySelector(`.memory-bank[data-bank="${bankIndex}"]`);
                             if (btn) {
-                                btn.classList.remove('flash-led');
+                                btn.classList.remove('flash-led', 'flash-led-amber');
                                 void btn.offsetWidth; // Trigger reflow to restart animation
-                                btn.classList.add('flash-led');
+                                btn.classList.add(pinnedBanks[bankIndex] ? 'flash-led-amber' : 'flash-led');
                             }
                         }
                     } else {
@@ -642,6 +674,12 @@
                 els.speedSlider.value = savedSpeed;
                 els.speedVal.innerText = formatSpeed(savedSpeed);
             }
+            
+            // Load global pinned state and global memory banks
+            const savedPins = localStorage.getItem('mp3_pinned_states');
+            if (savedPins) { try { pinnedBanks = JSON.parse(savedPins); } catch(e){} }
+            const savedGlobalBanks = localStorage.getItem('mp3_global_banks');
+            if (savedGlobalBanks) { try { globalMemoryBanks = JSON.parse(savedGlobalBanks); } catch(e){} }
 
             document.querySelectorAll('.memory-bank').forEach((btn) => {
                 const idx = parseInt(btn.getAttribute('data-bank'));
@@ -656,12 +694,24 @@
                         memoryActionDone = true;
                         if (currentFileIndex >= 0 && (loopA !== null || loopB !== null)) {
                             memoryBanks[idx] = { a: loopA, b: loopB };
-                            const filename = playlistFiles[currentFileIndex].file.name;
-                            localStorage.setItem(`mp3_banks_${filename}`, JSON.stringify(memoryBanks));
+                            
+                            if (pinnedBanks[idx]) {
+                                globalMemoryBanks[idx] = memoryBanks[idx];
+                                localStorage.setItem('mp3_global_banks', JSON.stringify(globalMemoryBanks));
+                            } else {
+                                const filename = playlistFiles[currentFileIndex].file.name;
+                                let localBanks = [null, null, null];
+                                const savedBanks = localStorage.getItem(`mp3_banks_${filename}`);
+                                if (savedBanks) { try { localBanks = JSON.parse(savedBanks); } catch(e) {} }
+                                localBanks[idx] = memoryBanks[idx];
+                                localStorage.setItem(`mp3_banks_${filename}`, JSON.stringify(localBanks));
+                            }
+                            
                             updateMemoryBankUI();
-                            btn.classList.remove('flash-led');
+                            
+                            btn.classList.remove('flash-led', 'flash-led-amber');
                             void btn.offsetWidth;
-                            btn.classList.add('flash-led');
+                            btn.classList.add(pinnedBanks[idx] ? 'flash-led-amber' : 'flash-led');
                         }
                     }, 600);
                 };
@@ -682,7 +732,35 @@
                 btn.addEventListener('pointerdown', handlePointerDown);
                 btn.addEventListener('pointerup', handlePointerUp);
                 btn.addEventListener('pointercancel', handlePointerCancel);
+                
+                // Double-click interaction for Pinning/Unpinning
+                btn.addEventListener('dblclick', (e) => {
+                    e.preventDefault();
+                    pinnedBanks[idx] = !pinnedBanks[idx];
+                    
+                    if (pinnedBanks[idx]) {
+                        // Pinning
+                        globalMemoryBanks[idx] = memoryBanks[idx] || { a: loopA, b: loopB };
+                        memoryBanks[idx] = globalMemoryBanks[idx];
+                        localStorage.setItem('mp3_global_banks', JSON.stringify(globalMemoryBanks));
+                    } else {
+                        // Unpinning
+                        if (currentFileIndex >= 0) {
+                            const filename = playlistFiles[currentFileIndex].file.name;
+                            const savedBanks = localStorage.getItem(`mp3_banks_${filename}`);
+                            let localBanks = [null, null, null];
+                            if (savedBanks) { try { localBanks = JSON.parse(savedBanks); } catch(e) {} }
+                            memoryBanks[idx] = localBanks[idx];
+                        } else {
+                            memoryBanks[idx] = null;
+                        }
+                    }
+                    localStorage.setItem('mp3_pinned_states', JSON.stringify(pinnedBanks));
+                    updateMemoryBankUI();
+                });
             });
+            
+            updateMemoryBankUI();
             
             if (isGAS) setupGoogleDriveIntegration();
         }
@@ -713,19 +791,22 @@
         function updateMemoryBankUI() {
             document.querySelectorAll('.memory-bank').forEach((btn, i) => {
                 const bank = memoryBanks[i];
+                const isPinned = pinnedBanks[i];
+                
+                // Reset all states
+                btn.classList.remove('led-empty', 'led-filled', 'led-active', 'led-pinned-filled', 'led-pinned-active');
+
                 if (bank !== null) {
-                    btn.classList.remove('led-empty');
-                    btn.classList.add('led-filled');
+                    btn.classList.add(isPinned ? 'led-pinned-filled' : 'led-filled');
                 } else {
-                    btn.classList.remove('led-filled');
-                    btn.classList.add('led-empty');
+                    btn.classList.add(isPinned ? 'led-pinned-filled' : 'led-empty');
                 }
-                btn.classList.remove('led-active');
+                
                 if (bank !== null) {
                     const aMatch = (bank.a === null && loopA === null) || (bank.a !== null && loopA !== null && Math.abs(bank.a - loopA) < 0.05);
                     const bMatch = (bank.b === null && loopB === null) || (bank.b !== null && loopB !== null && Math.abs(bank.b - loopB) < 0.05);
                     if (aMatch && bMatch && (loopA !== null || loopB !== null)) {
-                        btn.classList.add('led-active');
+                        btn.classList.add(isPinned ? 'led-pinned-active' : 'led-active');
                     }
                 }
             });
@@ -848,9 +929,19 @@
             els.audio.play().catch(e => console.log("Playback blocked until interacted"));
             updatePlayState();
 
+            // Populate track-specific and pinned global memory banks
             const savedBanks = localStorage.getItem(`mp3_banks_${file.name}`);
-            if (savedBanks) { try { memoryBanks = JSON.parse(savedBanks); } catch(e) { memoryBanks = [null, null, null]; } } 
-            else { memoryBanks = [null, null, null]; }
+            let localBanks = [null, null, null];
+            if (savedBanks) { try { localBanks = JSON.parse(savedBanks); } catch(e) { } } 
+            
+            for (let i = 0; i < 3; i++) {
+                if (pinnedBanks[i]) {
+                    memoryBanks[i] = globalMemoryBanks[i];
+                } else {
+                    memoryBanks[i] = localBanks[i];
+                }
+            }
+
             updateMemoryBankUI();
             els.audio.currentTime = 0;
             await generateStaticWaveform(file);
