@@ -455,7 +455,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.7.0 &bull; November 2026
+                Version 1.8.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -481,6 +481,19 @@
     <div id="playlists-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 sm:p-6 max-w-md w-full mx-4 transform transition-all flex flex-col max-h-[90vh]">
             <h3 class="text-xl font-bold text-white mb-4">Manage Playlists</h3>
+            
+            <!-- Export / Import Playlist -->
+            <div class="mb-4 flex gap-2 justify-between border-b border-slate-800 pb-4">
+                <button id="btn-export-playlist" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded transition-colors text-sm font-semibold flex items-center gap-2 border border-slate-700 w-1/2 justify-center">
+                    <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Export
+                </button>
+                <label class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded cursor-pointer transition-colors text-sm font-semibold flex items-center gap-2 border border-slate-700 w-1/2 justify-center">
+                    <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    Import
+                    <input type="file" id="btn-import-playlist" accept=".json" class="hidden">
+                </label>
+            </div>
             
             <!-- Save Current -->
             <div class="mb-4 flex gap-2">
@@ -565,6 +578,9 @@
             newPlaylistName: document.getElementById('new-playlist-name'),
             btnSavePlaylist: document.getElementById('btn-save-playlist'),
             savedPlaylistsList: document.getElementById('saved-playlists-list'),
+
+            btnExportPlaylist: document.getElementById('btn-export-playlist'),
+            btnImportPlaylist: document.getElementById('btn-import-playlist'),
         };
 
         // Ensure pitch remains normal when speeding up/down
@@ -884,6 +900,122 @@
                     els.newPlaylistName.value = '';
                 }
             };
+
+            // Export current playlist
+            els.btnExportPlaylist.onclick = async () => {
+                if (playlistFiles.length === 0) {
+                    alert("Playlist is empty!");
+                    return;
+                }
+
+                const exportData = { version: 1, files: [] };
+                
+                if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
+                    playlistFiles[currentFileIndex].loopA = loopA;
+                    playlistFiles[currentFileIndex].loopB = loopB;
+                }
+
+                const readFileAsDataURL = (file) => {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = error => reject(error);
+                        reader.readAsDataURL(file);
+                    });
+                };
+
+                els.btnExportPlaylist.innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Exporting...';
+                els.btnExportPlaylist.disabled = true;
+
+                try {
+                    for (const item of playlistFiles) {
+                        const dataURL = await readFileAsDataURL(item.file);
+                        exportData.files.push({
+                            name: item.file.name,
+                            type: item.file.type,
+                            disabled: item.disabled,
+                            loopA: item.loopA !== undefined ? item.loopA : null,
+                            loopB: item.loopB !== undefined ? item.loopB : null,
+                            data: dataURL
+                        });
+                    }
+
+                    const blob = new Blob([JSON.stringify(exportData)], {type: "application/json"});
+                    const url = URL.createObjectURL(blob);
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href", url);
+                    downloadAnchorNode.setAttribute("download", "playlist_export.json");
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error("Export failed:", error);
+                    alert("Failed to export playlist.");
+                } finally {
+                    els.btnExportPlaylist.innerHTML = '<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> Export';
+                    els.btnExportPlaylist.disabled = false;
+                }
+            };
+            
+            // Import playlist
+            els.btnImportPlaylist.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const importedData = JSON.parse(event.target.result);
+                        if (!importedData.files || !Array.isArray(importedData.files)) {
+                            throw new Error("Invalid playlist format");
+                        }
+
+                        els.loading.classList.remove('hidden');
+                        els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Importing Playlist...';
+                        
+                        const newPlaylist = [];
+                        for (const item of importedData.files) {
+                            const res = await fetch(item.data);
+                            const blob = await res.blob();
+                            const newFile = new File([blob], item.name, { type: item.type || 'audio/mpeg' });
+                            
+                            newPlaylist.push({
+                                file: newFile,
+                                disabled: item.disabled || false,
+                                loopA: item.loopA !== undefined ? item.loopA : null,
+                                loopB: item.loopB !== undefined ? item.loopB : null
+                            });
+                        }
+
+                        playlistFiles = newPlaylist;
+                        currentFileIndex = -1;
+                        els.audio.pause();
+                        els.audio.src = ''; 
+                        els.title.innerText = 'No file loaded'; 
+                        drawEmptyWaveform();
+                        loopA = null; loopB = null;
+                        updateDualSliderUI();
+
+                        renderPlaylist();
+                        saveStateToDB();
+                        
+                        if (playlistFiles.length > 0) {
+                            playNextValidTrack(0);
+                        }
+                        
+                        els.playlistsModal.classList.add('hidden');
+                    } catch (error) {
+                        console.error("Import failed:", error);
+                        alert("Failed to import playlist. Invalid or corrupted file.");
+                    } finally {
+                        els.loading.classList.add('hidden');
+                        els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Decoding Audio...';
+                        els.btnImportPlaylist.value = ''; 
+                    }
+                };
+                reader.readAsText(file);
+            });
 
             const savedVol = localStorage.getItem('mp3_vol');
             const savedSpeed = localStorage.getItem('mp3_speed');
