@@ -225,7 +225,11 @@
                 <p id="now-playing-title" class="text-slate-400 text-sm mt-1 truncate max-w-md">No file loaded</p>
             </div>
             <div class="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto justify-start sm:justify-end">
-                <button id="btn-drive-modal" onclick="document.getElementById('drive-modal').classList.remove('hidden')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg cursor-pointer transition-colors text-sm font-semibold flex items-center gap-2 border border-slate-700 w-full sm:w-auto justify-center">
+                <button id="btn-playlists-modal" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg cursor-pointer transition-colors text-sm font-semibold flex items-center gap-2 border border-slate-700 w-full sm:w-auto justify-center">
+                    <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                    Playlists
+                </button>
+                <button id="btn-drive-modal" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg cursor-pointer transition-colors text-sm font-semibold flex items-center gap-2 border border-slate-700 w-full sm:w-auto justify-center">
                     <svg class="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24"><path d="M7.71 3.5L1.15 15l3.43 6 6.55-11.5M9.73 15L16.29 3.5h-6.86L2.87 15M17.43 15.5l-3.42-6h-6.86l6.56 11.5h6.86"/></svg>
                     Drive
                 </button>
@@ -451,7 +455,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.6.0 &bull; November 2026
+                Version 1.7.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -469,6 +473,29 @@
 
             <div class="flex justify-end border-t border-slate-800 pt-4">
                 <button onclick="document.getElementById('about-modal').classList.add('hidden')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors font-semibold text-sm">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Playlists Modal -->
+    <div id="playlists-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 sm:p-6 max-w-md w-full mx-4 transform transition-all flex flex-col max-h-[90vh]">
+            <h3 class="text-xl font-bold text-white mb-4">Manage Playlists</h3>
+            
+            <!-- Save Current -->
+            <div class="mb-4 flex gap-2">
+                <input type="text" id="new-playlist-name" placeholder="Name for current playlist..." class="w-full bg-slate-800 text-slate-300 text-sm rounded border border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
+                <button id="btn-save-playlist" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm font-semibold whitespace-nowrap">Save</button>
+            </div>
+            
+            <h4 class="text-sm font-semibold text-slate-400 mb-2">Saved Playlists</h4>
+            <!-- List -->
+            <ul id="saved-playlists-list" class="flex-grow overflow-y-auto mb-4 bg-slate-950 rounded border border-slate-800 p-2 space-y-1 min-h-[150px]">
+                <!-- Items injected via JS -->
+            </ul>
+
+            <div class="flex justify-end border-t border-slate-800 pt-4">
+                <button onclick="document.getElementById('playlists-modal').classList.add('hidden')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors font-semibold text-sm">Close</button>
             </div>
         </div>
     </div>
@@ -532,6 +559,12 @@
 
             btnAbout: document.getElementById('btn-about'),
             aboutModal: document.getElementById('about-modal'),
+
+            btnPlaylistsModal: document.getElementById('btn-playlists-modal'),
+            playlistsModal: document.getElementById('playlists-modal'),
+            newPlaylistName: document.getElementById('new-playlist-name'),
+            btnSavePlaylist: document.getElementById('btn-save-playlist'),
+            savedPlaylistsList: document.getElementById('saved-playlists-list'),
         };
 
         // Ensure pitch remains normal when speeding up/down
@@ -620,7 +653,122 @@
             }
         }
 
-// --- Keyboard Shortcuts ---
+        // --- Save and Load Full Playlists ---
+        async function getSavedPlaylists() {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(storeName, "readonly");
+                const store = tx.objectStore(storeName);
+                const req = store.get('savedPlaylists');
+                return new Promise((resolve) => {
+                    tx.oncomplete = () => resolve(req.result || {});
+                });
+            } catch (e) { return {}; }
+        }
+
+        async function saveCurrentPlaylist(name) {
+            if (!name) return;
+            if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
+                playlistFiles[currentFileIndex].loopA = loopA;
+                playlistFiles[currentFileIndex].loopB = loopB;
+            }
+            const db = await openDB();
+            const tx = db.transaction(storeName, "readwrite");
+            const store = tx.objectStore(storeName);
+            const getReq = store.get('savedPlaylists');
+            getReq.onsuccess = () => {
+                const saved = getReq.result || {};
+                saved[name] = {
+                    files: playlistFiles, 
+                    index: currentFileIndex
+                };
+                store.put(saved, 'savedPlaylists');
+            };
+            return new Promise(resolve => { tx.oncomplete = () => { renderSavedPlaylists(); resolve(); }});
+        }
+
+        async function loadPlaylist(name) {
+            const saved = await getSavedPlaylists();
+            if (saved[name]) {
+                if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
+                    playlistFiles[currentFileIndex].loopA = loopA;
+                    playlistFiles[currentFileIndex].loopB = loopB;
+                }
+                
+                els.audio.pause();
+                
+                playlistFiles = saved[name].files || [];
+                currentFileIndex = saved[name].index !== undefined ? saved[name].index : -1;
+                
+                renderPlaylist();
+                
+                if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
+                    playTrack(currentFileIndex, false);
+                } else {
+                    els.audio.src = ''; 
+                    els.title.innerText = 'No file loaded'; 
+                    drawEmptyWaveform();
+                    loopA = null; loopB = null;
+                    updateDualSliderUI();
+                }
+                
+                saveStateToDB();
+                els.playlistsModal.classList.add('hidden');
+            }
+        }
+
+        async function deletePlaylist(name) {
+            const db = await openDB();
+            const tx = db.transaction(storeName, "readwrite");
+            const store = tx.objectStore(storeName);
+            const getReq = store.get('savedPlaylists');
+            getReq.onsuccess = () => {
+                const saved = getReq.result || {};
+                delete saved[name];
+                store.put(saved, 'savedPlaylists');
+            };
+            return new Promise(resolve => { tx.oncomplete = () => { renderSavedPlaylists(); resolve(); }});
+        }
+
+        window.renderSavedPlaylists = async function() {
+            const saved = await getSavedPlaylists();
+            els.savedPlaylistsList.innerHTML = '';
+            const names = Object.keys(saved);
+            if (names.length === 0) {
+                els.savedPlaylistsList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">No saved playlists.</li>';
+                return;
+            }
+            names.forEach(name => {
+                const li = document.createElement('li');
+                li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors";
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = "truncate pr-2 flex-grow font-medium";
+                nameSpan.innerText = name;
+                
+                const btnGroup = document.createElement('div');
+                btnGroup.className = "flex items-center gap-2";
+                
+                const btnLoad = document.createElement('button');
+                btnLoad.className = "px-3 py-1 bg-green-600 hover:bg-green-500 text-white rounded text-xs transition-colors shadow";
+                btnLoad.innerText = "Load";
+                btnLoad.onclick = () => loadPlaylist(name);
+                
+                const btnDel = document.createElement('button');
+                btnDel.className = "p-1 text-slate-500 hover:text-red-400 transition-colors";
+                btnDel.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+                btnDel.onclick = () => deletePlaylist(name);
+                
+                btnGroup.appendChild(btnLoad);
+                btnGroup.appendChild(btnDel);
+                
+                li.appendChild(nameSpan);
+                li.appendChild(btnGroup);
+                els.savedPlaylistsList.appendChild(li);
+            });
+        };
+
+        // --- Keyboard Shortcuts ---
         window.addEventListener('keydown', (e) => {
             // Ignore shortcuts if the user is typing in a search box or text input
             const activeTag = document.activeElement.tagName;
@@ -723,6 +871,19 @@
             els.canvas.width = els.canvas.clientWidth;
             els.canvas.height = els.canvas.clientHeight;
             drawEmptyWaveform();
+
+            els.btnPlaylistsModal.onclick = () => {
+                els.playlistsModal.classList.remove('hidden');
+                renderSavedPlaylists();
+            };
+            
+            els.btnSavePlaylist.onclick = async () => {
+                const name = els.newPlaylistName.value.trim();
+                if (name) {
+                    await saveCurrentPlaylist(name);
+                    els.newPlaylistName.value = '';
+                }
+            };
 
             const savedVol = localStorage.getItem('mp3_vol');
             const savedSpeed = localStorage.getItem('mp3_speed');
