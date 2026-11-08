@@ -451,7 +451,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 1.5.0 &bull; November 2026
+                Version 1.6.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -560,6 +560,66 @@
         let pinnedBanks = [false, false, false];
         let globalMemoryBanks = [null, null, null];
 
+        // --- Persistence (IndexedDB) ---
+        const dbName = "AudioReaderDB";
+        const storeName = "playlist";
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(dbName, 1);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        db.createObjectStore(storeName);
+                    }
+                };
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        async function saveStateToDB() {
+            try {
+                // Sync current active track's loop points before saving
+                if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
+                    playlistFiles[currentFileIndex].loopA = loopA;
+                    playlistFiles[currentFileIndex].loopB = loopB;
+                }
+                const db = await openDB();
+                const tx = db.transaction(storeName, "readwrite");
+                const store = tx.objectStore(storeName);
+                
+                store.put(playlistFiles, 'playlistFiles');
+                store.put(currentFileIndex, 'currentFileIndex');
+                
+                return new Promise((resolve) => { tx.oncomplete = () => resolve(); });
+            } catch (e) {
+                console.error("Failed to save state:", e);
+            }
+        }
+
+        async function loadStateFromDB() {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(storeName, "readonly");
+                const store = tx.objectStore(storeName);
+                const playlistReq = store.get('playlistFiles');
+                const indexReq = store.get('currentFileIndex');
+                
+                return new Promise((resolve) => {
+                    tx.oncomplete = () => {
+                        resolve({
+                            playlist: playlistReq.result || [],
+                            index: indexReq.result !== undefined ? indexReq.result : -1
+                        });
+                    };
+                });
+            } catch (e) {
+                console.error("Failed to load state:", e);
+                return { playlist: [], index: -1 };
+            }
+        }
+
 // --- Keyboard Shortcuts ---
         window.addEventListener('keydown', (e) => {
             // Ignore shortcuts if the user is typing in a search box or text input
@@ -657,7 +717,7 @@
         });
 
         // --- Initialization & Local Storage ---
-        function init() {
+        async function init() {
             if (!isGAS) els.btnDriveModal.classList.add('hidden');
             
             els.canvas.width = els.canvas.clientWidth;
@@ -682,7 +742,7 @@
             const savedGlobalBanks = localStorage.getItem('mp3_global_banks');
             if (savedGlobalBanks) { try { globalMemoryBanks = JSON.parse(savedGlobalBanks); } catch(e){} }
 
-document.querySelectorAll('.memory-bank').forEach((btn) => {
+            document.querySelectorAll('.memory-bank').forEach((btn) => {
                 const idx = parseInt(btn.getAttribute('data-bank'));
                 let lastTapTime = 0; // Tracks taps for mobile double-tap detection
                 
@@ -775,6 +835,26 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             updateMemoryBankUI();
             
             if (isGAS) setupGoogleDriveIntegration();
+            
+            // --- LOAD STATE FROM DB ---
+            els.loading.classList.remove('hidden');
+            els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Restoring Session...';
+            
+            const savedState = await loadStateFromDB();
+            if (savedState.playlist && savedState.playlist.length > 0) {
+                playlistFiles = savedState.playlist;
+                renderPlaylist();
+                if (savedState.index >= 0 && savedState.index < playlistFiles.length) {
+                    await playTrack(savedState.index, false); // Load track without auto-play
+                    // Restore position
+                    const savedPos = localStorage.getItem(`pos_${playlistFiles[savedState.index].file.name}`);
+                    if (savedPos !== null) {
+                        els.audio.currentTime = parseFloat(savedPos);
+                    }
+                }
+            }
+            els.loading.classList.add('hidden');
+            els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Decoding Audio...';
         }
         window.addEventListener('resize', () => {
             if(!peaks.length) return;
@@ -839,6 +919,7 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             validFiles.forEach(file => playlistFiles.push({ file: file, disabled: false }));
             renderPlaylist();
             if (currentFileIndex === -1) playNextValidTrack(0);
+            saveStateToDB();
         }
 
         function renderPlaylist() {
@@ -901,20 +982,20 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
         els.playlistSearch.addEventListener('input', filterPlaylist);
         els.btnClearSearch.addEventListener('click', () => { els.playlistSearch.value = ''; els.playlistSearch.dispatchEvent(new Event('input')); els.playlistSearch.focus(); });
 
-        window.toggleTrack = function(index) { playlistFiles[index].disabled = !playlistFiles[index].disabled; renderPlaylist(); };
+        window.toggleTrack = function(index) { playlistFiles[index].disabled = !playlistFiles[index].disabled; renderPlaylist(); saveStateToDB(); };
         window.moveTrack = function(index, dir) {
             if (index + dir < 0 || index + dir >= playlistFiles.length) return;
             const temp = playlistFiles[index]; playlistFiles[index] = playlistFiles[index + dir]; playlistFiles[index + dir] = temp;
             if (currentFileIndex === index) currentFileIndex = index + dir;
             else if (currentFileIndex === index + dir) currentFileIndex = index;
-            renderPlaylist();
+            renderPlaylist(); saveStateToDB();
         };
         window.deleteTrack = function(index) {
             playlistFiles.splice(index, 1);
             if (currentFileIndex === index) {
                 currentFileIndex = -1; els.audio.pause(); els.audio.src = ''; els.title.innerText = 'No file loaded'; drawEmptyWaveform(); playNextValidTrack(index);
             } else if (currentFileIndex > index) currentFileIndex--;
-            renderPlaylist();
+            renderPlaylist(); saveStateToDB();
         };
 
         function playNextValidTrack(startIndex) {
@@ -929,7 +1010,7 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             els.iconPlay.classList.remove('hidden'); els.iconPause.classList.add('hidden');
         }
 
-        async function playTrack(index) {
+        async function playTrack(index, autoPlay = true) {
             if (index < 0 || index >= playlistFiles.length || playlistFiles[index].disabled) return;
             
             // Save the current A-B selection to the active track in memory before switching
@@ -940,6 +1021,7 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
 
             currentFileIndex = index;
             const file = playlistFiles[index].file;
+            if (!file) return;
             els.title.innerText = file.name;
             renderPlaylist(); 
             
@@ -948,7 +1030,9 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             loopB = playlistFiles[index].loopB !== undefined ? playlistFiles[index].loopB : null;
             
             els.audio.src = URL.createObjectURL(file);            els.audio.load();
-            els.audio.play().catch(e => console.log("Playback blocked until interacted"));
+            if (autoPlay) {
+                els.audio.play().catch(e => console.log("Playback blocked until interacted"));
+            }
             updatePlayState();
 
             // Populate track-specific and pinned global memory banks
@@ -965,7 +1049,8 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             }
 
             updateMemoryBankUI();
-            els.audio.currentTime = 0;
+            if (autoPlay) els.audio.currentTime = 0;
+            saveStateToDB();
             await generateStaticWaveform(file);
         }
 
@@ -976,7 +1061,8 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             els.sliderA.disabled = false; els.sliderB.disabled = false;
             if (loopA === null) els.sliderA.value = 0;
             if (loopB === null) els.sliderB.value = els.audio.duration;
-            els.audio.currentTime = loopA !== null ? loopA : 0;
+            // Only update current time if a loop exists, otherwise leave at 0 or init() restored position
+            if (loopA !== null && els.audio.currentTime === 0) els.audio.currentTime = loopA;
             updateDualSliderUI();
         });
 
@@ -1060,14 +1146,14 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             updateMemoryBankUI();
         }
 
-        els.btnSetA.onclick = () => { loopA = els.audio.currentTime; updateDualSliderUI(); };
-        els.btnSetB.onclick = () => { loopB = els.audio.currentTime; updateDualSliderUI(); };
+        els.btnSetA.onclick = () => { loopA = els.audio.currentTime; updateDualSliderUI(); saveStateToDB(); };
+        els.btnSetB.onclick = () => { loopB = els.audio.currentTime; updateDualSliderUI(); saveStateToDB(); };
         window.nudgeLoop = function(type, amt) {
             if (type === 'A' && loopA !== null) { loopA = Math.max(0, loopA + amt); if (loopB !== null) loopA = Math.min(loopA, loopB - 0.1); els.audio.currentTime = loopA; }
             if (type === 'B' && loopB !== null) { loopB = Math.min(els.audio.duration, loopB + amt); if (loopA !== null) loopB = Math.max(loopB, loopA + 0.1); els.audio.currentTime = loopB; }
-            updateDualSliderUI();
+            updateDualSliderUI(); saveStateToDB();
         };
-        function clearLoop() { loopA = null; loopB = null; if(els.audio.duration) els.sliderB.value = els.audio.duration; els.sliderA.value = 0; updateDualSliderUI(); }
+        function clearLoop() { loopA = null; loopB = null; if(els.audio.duration) els.sliderB.value = els.audio.duration; els.sliderA.value = 0; updateDualSliderUI(); saveStateToDB(); }
         els.btnClearLoop.onclick = clearLoop;
 
         function handleTimeInput(e, type) {
@@ -1083,7 +1169,7 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
                 if (loopB === null) loopB = els.audio.duration; loopB = Math.min(els.audio.duration, parsed); if (loopA !== null) loopB = Math.max(loopB, loopA + 0.1);
                 els.audio.currentTime = loopB;
             }
-            updateDualSliderUI();
+            updateDualSliderUI(); saveStateToDB();
         }
         els.displayA.addEventListener('change', (e) => handleTimeInput(e, 'A'));
         els.displayB.addEventListener('change', (e) => handleTimeInput(e, 'B'));
@@ -1100,6 +1186,9 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
             if (val < minVal) { val = minVal; e.target.value = val; }
             loopB = val; els.audio.currentTime = val; updateDualSliderUI(); ignoreSliderInput = false;
         });
+        // Save state when slider is released
+        els.sliderA.addEventListener('change', saveStateToDB);
+        els.sliderB.addEventListener('change', saveStateToDB);
 
         function drawEmptyWaveform() {
             els.canvas.width = els.canvas.clientWidth; els.canvas.height = els.canvas.clientHeight;
@@ -1189,6 +1278,7 @@ document.querySelectorAll('.memory-bank').forEach((btn) => {
                     if (loopA !== null && loopB !== null && (loopB - loopA) < 0.1) loopB = null;
                     if (loopA !== null) els.audio.currentTime = loopA;
                     updateDualSliderUI();
+                    saveStateToDB();
                 } else {
                     els.audio.currentTime = dragState.clickTime;
                 }
