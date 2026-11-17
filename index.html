@@ -597,6 +597,9 @@
         let peaks = [];
         let ignoreSliderInput = false;
         
+        let isReordering = false;
+        let draggedItemIndex = null;
+
         const isGAS = typeof google !== 'undefined' && google.script && google.script.run;
         let driveNextPageToken = null;
         
@@ -1197,13 +1200,21 @@
             });
         }
 
+        // --- Drag and Drop Global Listeners for External File Adding ---
         els.fileUpload.addEventListener('change', (e) => addFilesToPlaylist(e.target.files));
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => document.body.addEventListener(ev, e => e.preventDefault(), false));
-        document.body.addEventListener('dragenter', () => els.dropOverlay.classList.remove('hidden'));
-        document.body.addEventListener('dragleave', (e) => { if (e.target === els.dropOverlay) els.dropOverlay.classList.add('hidden'); });
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => document.body.addEventListener(ev, e => {
+            if (isReordering) return; // Allow item sorting events to function freely
+            e.preventDefault();
+        }, false));
+        document.body.addEventListener('dragenter', () => {
+            if (!isReordering) els.dropOverlay.classList.remove('hidden');
+        });
+        document.body.addEventListener('dragleave', (e) => { 
+            if (e.target === els.dropOverlay) els.dropOverlay.classList.add('hidden'); 
+        });
         document.body.addEventListener('drop', (e) => {
             els.dropOverlay.classList.add('hidden');
-            if (e.dataTransfer.files.length) addFilesToPlaylist(e.dataTransfer.files);
+            if (!isReordering && e.dataTransfer && e.dataTransfer.files.length) addFilesToPlaylist(e.dataTransfer.files);
         });
 
         function addFilesToPlaylist(files) {
@@ -1220,6 +1231,55 @@
             playlistFiles.forEach((item, index) => {
                 const li = document.createElement('li');
                 li.className = `playlist-item px-3 py-2 text-sm border-b border-slate-800 text-slate-300 transition-colors flex items-center justify-between group ${index === currentFileIndex ? 'active font-bold text-white' : ''} ${item.disabled ? 'opacity-50' : ''}`;
+
+                // --- Drag and Drop functionality ---
+                li.draggable = true;
+                li.addEventListener('dragstart', (e) => {
+                    isReordering = true;
+                    draggedItemIndex = index;
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', index.toString());
+                    li.classList.add('opacity-40');
+                });
+                li.addEventListener('dragend', () => {
+                    isReordering = false;
+                    draggedItemIndex = null;
+                    li.classList.remove('opacity-40');
+                    els.playlist.querySelectorAll('li').forEach(el => el.classList.remove('border-t-2', 'border-blue-500'));
+                });
+                li.addEventListener('dragover', (e) => {
+                    if (!isReordering) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    li.classList.add('border-t-2', 'border-blue-500');
+                });
+                li.addEventListener('dragleave', () => {
+                    if (!isReordering) return;
+                    li.classList.remove('border-t-2', 'border-blue-500');
+                });
+                li.addEventListener('drop', (e) => {
+                    if (!isReordering) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    li.classList.remove('border-t-2', 'border-blue-500');
+                    if (draggedItemIndex !== null && draggedItemIndex !== index) {
+                        const draggedItem = playlistFiles.splice(draggedItemIndex, 1)[0];
+                        playlistFiles.splice(index, 0, draggedItem);
+                        
+                        if (currentFileIndex === draggedItemIndex) {
+                            currentFileIndex = index;
+                        } else if (currentFileIndex > draggedItemIndex && currentFileIndex <= index) {
+                            currentFileIndex--;
+                        } else if (currentFileIndex < draggedItemIndex && currentFileIndex >= index) {
+                            currentFileIndex++;
+                        }
+                        
+                        renderPlaylist();
+                        saveStateToDB();
+                    }
+                });
+                // --- End Drag and Drop ---
 
                 const leftDiv = document.createElement('div');
                 leftDiv.className = "flex items-center gap-3 overflow-hidden flex-grow cursor-pointer";
