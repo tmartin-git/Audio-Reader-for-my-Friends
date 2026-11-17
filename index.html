@@ -399,9 +399,15 @@
         <div class="mt-2 border-t border-slate-800 pt-4">
             <div class="flex items-center justify-between mb-2 px-1">
                 <h3 class="text-sm font-semibold text-slate-400">Playlist</h3>
-                <button id="btn-playlist-repeat" class="p-1 text-slate-500 hover:text-white transition-all rounded" title="Repeat Playlist">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                </button>
+                <div class="flex items-center gap-4">
+                    <label class="text-xs text-slate-400 flex items-center gap-1 cursor-pointer" title="Auto-play next track when current track ends">
+                        <input type="checkbox" id="chain-tracks" class="rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500" checked>
+                        Chain Tracks
+                    </label>
+                    <button id="btn-playlist-repeat" class="p-1 text-slate-500 hover:text-white transition-all rounded" title="Repeat Playlist">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </button>
+                </div>
             </div>
             
             <!-- Playlist Search -->
@@ -466,7 +472,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.0.0 &bull; November 2026
+                Version 2.1.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -538,6 +544,7 @@
             btnFwd: document.getElementById('btn-fwd'),
             btnNext: document.getElementById('btn-next'),
             btnPlaylistRepeat: document.getElementById('btn-playlist-repeat'),
+            chainTracks: document.getElementById('chain-tracks'),
             
             speedSlider: document.getElementById('speed-slider'),
             speedVal: document.getElementById('speed-val'),
@@ -653,6 +660,7 @@
             };
             
             followers.push(follower);
+            els.chainTracks.checked = false; // Auto-uncheck when follower tracks are used
             renderFollowers();
         };
 
@@ -1578,15 +1586,26 @@
                         setTimeout(() => { els.audio.currentTime = loopA; els.audio.play(); isLoopPausing = false; }, pauseTime);
                     } else { els.audio.currentTime = loopA; }
                 } else {
-                    // Play next track if repeat checkbox is not set
-                    playNextValidTrack(currentFileIndex + 1);
+                    // Play next track if chain tracks is enabled
+                    if (els.chainTracks.checked) {
+                        playNextValidTrack(currentFileIndex + 1);
+                    } else {
+                        els.audio.pause();
+                        updatePlayState();
+                    }
                 }
             }
         });
 
         els.audio.addEventListener('ended', () => {
             if (isRepeatTrack) { els.audio.currentTime = 0; els.audio.play().catch(e => console.log(e)); } 
-            else { playNextValidTrack(currentFileIndex + 1); }
+            else { 
+                if (els.chainTracks.checked) {
+                    playNextValidTrack(currentFileIndex + 1);
+                } else {
+                    els.iconPlay.classList.remove('hidden'); els.iconPause.classList.add('hidden');
+                }
+            }
         });
 
         function updatePlayState() {
