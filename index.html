@@ -472,7 +472,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.1.0 &bull; November 2026
+                Version 2.1.1 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -624,6 +624,7 @@
         // Synchronous Follower Tracks State
         let followers = [];
         let followerIdCounter = 0;
+        let isSyncing = false; // Added for stop-and-go sync
 
         const isGAS = typeof google !== 'undefined' && google.script && google.script.run;
         let driveNextPageToken = null;
@@ -642,15 +643,14 @@
             const file = playlistFiles[index].file;
             if (!file) return;
             
+            // --- Stop and go synchronization ---
+            const wasPlaying = !els.audio.paused;
+            if (wasPlaying) els.audio.pause(); // Pause main and existing followers
+            
             const audioObj = new Audio(URL.createObjectURL(file));
             audioObj.preservesPitch = true;
             audioObj.volume = 1.0;
-            audioObj.currentTime = els.audio.currentTime;
             audioObj.playbackRate = els.audio.playbackRate;
-            
-            if (!els.audio.paused) {
-                audioObj.play().catch(e => console.log(e));
-            }
             
             const follower = {
                 id: followerIdCounter++,
@@ -662,6 +662,30 @@
             followers.push(follower);
             els.chainTracks.checked = false; // Auto-uncheck when follower tracks are used
             renderFollowers();
+
+            // Wait for audio to be ready, perfectly align, then resume
+            const onReady = () => {
+                audioObj.removeEventListener('canplaythrough', onReady);
+                if (wasPlaying) {
+                    const syncTime = els.audio.currentTime;
+                    followers.forEach(f => f.audio.currentTime = syncTime);
+                    els.audio.play().catch(e => console.log(e));
+                } else {
+                    audioObj.currentTime = els.audio.currentTime;
+                }
+            };
+            
+            audioObj.addEventListener('canplaythrough', onReady);
+            
+            // Fallback timeout to prevent infinite hanging if decoding takes too long
+            setTimeout(() => {
+                audioObj.removeEventListener('canplaythrough', onReady);
+                if (wasPlaying && els.audio.paused) {
+                    const syncTime = els.audio.currentTime;
+                    followers.forEach(f => f.audio.currentTime = syncTime);
+                    els.audio.play().catch(e => console.log(e));
+                }
+            }, 600);
         };
 
         window.removeFollower = function(id) {
@@ -1572,11 +1596,31 @@
             els.progressFill.style.width = `${percent}%`; els.playhead.style.left = `${percent}%`;
 
             // Drift correction for Follower Tracks
-            followers.forEach(f => {
-                if (!f.audio.paused && Math.abs(f.audio.currentTime - cur) > 0.15) {
-                    f.audio.currentTime = cur;
+            if (!isSyncing && followers.length > 0 && !els.audio.paused) {
+                let needsSync = false;
+                followers.forEach(f => {
+                    if (Math.abs(f.audio.currentTime - cur) > 0.15) {
+                        needsSync = true;
+                    }
+                });
+
+                if (needsSync) {
+                    isSyncing = true;
+                    els.audio.pause(); // Pause all tracks immediately
+                    
+                    // Brief stop-and-go to perfectly align buffers
+                    setTimeout(() => {
+                        const target = els.audio.currentTime;
+                        followers.forEach(f => f.audio.currentTime = target);
+                        els.audio.play().then(() => {
+                            isSyncing = false;
+                        }).catch(e => {
+                            console.log(e);
+                            isSyncing = false;
+                        });
+                    }, 150);
                 }
-            });
+            }
 
             if (loopA !== null && loopB !== null && cur >= loopB && !isLoopPausing) {
                 if (els.loopIndef.checked) {
