@@ -45,6 +45,93 @@ function getDriveAudioFiles(searchQuery, pageIndex) {
   };
 }
 
+// NEW FUNCTION: Retrieve Folders and Audio files for navigation (Includes Shared with me)
+function getDriveContents(folderId) {
+  let folders = [];
+  let files = [];
+  let parentId = null;
+  let currentFolderId = folderId || 'root';
+  let currentFolderName = 'Root';
+
+  if (currentFolderId === 'root') {
+    // 1. Load "My Drive" (Root)
+    let rootFolder = DriveApp.getRootFolder();
+    let folderIterator = rootFolder.getFolders();
+    while (folderIterator.hasNext()) {
+      let f = folderIterator.next();
+      folders.push({ id: f.getId(), name: f.getName(), type: 'folder' });
+    }
+    folders.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    
+    // Inject virtual "Shared with me" directory at the top of the list
+    folders.unshift({ id: 'shared_with_me', name: '👥 Shared with me', type: 'folder' });
+
+    let query = '"' + rootFolder.getId() + '" in parents and (mimeType contains "audio/" or mimeType = "application/ogg") and trashed = false';
+    let fileIterator = DriveApp.searchFiles(query);
+    while (fileIterator.hasNext()) {
+      let f = fileIterator.next();
+      files.push({ id: f.getId(), name: f.getName(), type: 'file', mimeType: f.getMimeType() });
+    }
+    files.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    
+  } else if (currentFolderId === 'shared_with_me') {
+    // 2. Load "Shared with me" Virtual Folder
+    let folderIterator = DriveApp.searchFolders('sharedWithMe = true and trashed = false');
+    while (folderIterator.hasNext()) {
+      let f = folderIterator.next();
+      folders.push({ id: f.getId(), name: f.getName(), type: 'folder' });
+    }
+    folders.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+    let fileIterator = DriveApp.searchFiles('sharedWithMe = true and (mimeType contains "audio/" or mimeType = "application/ogg") and trashed = false');
+    while (fileIterator.hasNext()) {
+      let f = fileIterator.next();
+      files.push({ id: f.getId(), name: f.getName(), type: 'file', mimeType: f.getMimeType() });
+    }
+    files.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    
+    parentId = 'root';
+    currentFolderName = '👥 Shared with me';
+    
+  } else {
+    // 3. Load Standard Subfolders
+    let folder;
+    try {
+      folder = DriveApp.getFolderById(currentFolderId);
+    } catch (e) {
+      return { error: 'Folder not found or accessible.' };
+    }
+    
+    let folderIterator = folder.getFolders();
+    while (folderIterator.hasNext()) {
+      let f = folderIterator.next();
+      folders.push({ id: f.getId(), name: f.getName(), type: 'folder' });
+    }
+    folders.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+    let query = '"' + folder.getId() + '" in parents and (mimeType contains "audio/" or mimeType = "application/ogg") and trashed = false';
+    let fileIterator = DriveApp.searchFiles(query);
+    while (fileIterator.hasNext()) {
+      let f = fileIterator.next();
+      files.push({ id: f.getId(), name: f.getName(), type: 'file', mimeType: f.getMimeType() });
+    }
+    files.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    
+    // Determine parent for the "Up" navigation button
+    let parents = folder.getParents();
+    parentId = parents.hasNext() ? parents.next().getId() : 'root';
+    currentFolderName = folder.getName();
+  }
+
+  return { 
+    folders: folders, 
+    files: files, 
+    parentId: parentId, 
+    currentFolderId: currentFolderId, 
+    currentFolderName: currentFolderName 
+  };
+}
+
 function downloadDriveFile(fileId) {
   const file = DriveApp.getFileById(fileId);
   const blob = file.getBlob();

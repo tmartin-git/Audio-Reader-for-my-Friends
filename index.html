@@ -433,13 +433,24 @@
             
             <!-- Search & Filter -->
             <div class="mb-2 flex gap-2">
-                <input type="text" id="drive-search" placeholder="Search Drive audio files..." class="w-full bg-slate-800 text-slate-300 text-sm rounded border border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
+                <input type="text" id="drive-search" placeholder="Search Drive audio files globally..." class="w-full bg-slate-800 text-slate-300 text-sm rounded border border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
                 <button id="btn-drive-search" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm font-semibold">Search</button>
             </div>
             
+            <!-- Navigation Bar for Browsing -->
+            <div id="drive-nav-bar" class="mb-2 flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800 hidden">
+                <button id="btn-drive-up" class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors" title="Go Up">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+                </button>
+                <span id="drive-current-folder" class="text-sm text-slate-300 font-semibold truncate flex-grow">Root</span>
+                <button id="btn-drive-home" class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors" title="Go to Root">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </button>
+            </div>
+
             <!-- Informational Banner -->
             <p class="text-xs text-slate-400 mb-3 italic px-1">
-                Displaying up to 100 files per page. Use the search filter if you cannot find your specific file.
+                Browse your folders, or use the search bar to locate specific files across your entire drive.
             </p>
 
             <!-- File List -->
@@ -472,7 +483,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.1.1 &bull; November 2026
+                Version 2.2.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -590,6 +601,10 @@
             driveFileList: document.getElementById('drive-file-list'),
             btnDriveLoadMore: document.getElementById('btn-drive-load-more'),
             driveLoadMoreContainer: document.getElementById('drive-load-more-container'),
+            driveNavBar: document.getElementById('drive-nav-bar'),
+            btnDriveUp: document.getElementById('btn-drive-up'),
+            btnDriveHome: document.getElementById('btn-drive-home'),
+            driveCurrentFolder: document.getElementById('drive-current-folder'),
 
             btnAbout: document.getElementById('btn-about'),
             aboutModal: document.getElementById('about-modal'),
@@ -628,6 +643,9 @@
 
         const isGAS = typeof google !== 'undefined' && google.script && google.script.run;
         let driveNextPageToken = null;
+        let currentDriveFolderId = 'root';
+        let driveParentFolderId = null;
+        let isDriveSearching = false;
         
         // Memory Bank State
         let memoryBanks = [null, null, null];
@@ -1844,24 +1862,104 @@
             }
         });
 
-        // --- Google Drive Integration Logic (Paginated) ---
+        // --- Google Drive Integration Logic (Paginated & Folders) ---
         function setupGoogleDriveIntegration() {
-            els.btnDriveSearch.onclick = () => loadDriveFiles(els.driveSearch.value, null);
-            els.driveSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') loadDriveFiles(els.driveSearch.value, null); });
-            els.btnDriveLoadMore.onclick = () => { if (driveNextPageToken) loadDriveFiles(els.driveSearch.value, driveNextPageToken); };
+            // Updated Search Action: Either Global Search or Folder View
+            els.btnDriveSearch.onclick = () => {
+                const query = els.driveSearch.value.trim();
+                if (query === '') {
+                    loadDriveContents(currentDriveFolderId);
+                } else {
+                    loadDriveFiles(query, null);
+                }
+            };
+            els.driveSearch.addEventListener('keypress', (e) => { 
+                if (e.key === 'Enter') els.btnDriveSearch.click(); 
+            });
+            
+            els.btnDriveLoadMore.onclick = () => { 
+                if (driveNextPageToken) loadDriveFiles(els.driveSearch.value, driveNextPageToken); 
+            };
+            
+            // Breadcrumb Actions
+            els.btnDriveUp.onclick = () => {
+                if (driveParentFolderId) loadDriveContents(driveParentFolderId);
+            };
+            els.btnDriveHome.onclick = () => loadDriveContents('root');
             
             const oldDriveBtnClick = els.btnDriveModal.onclick;
             els.btnDriveModal.onclick = (e) => {
                 els.driveModal.classList.remove('hidden');
                 if (els.driveFileList.innerHTML.includes('Connecting to') || els.driveFileList.innerHTML === '') {
-                    loadDriveFiles('', null);
+                    loadDriveContents('root');
                 }
             };
         }
 
+        // Folder Browsing logic
+        function loadDriveContents(folderId) {
+            isDriveSearching = false;
+            els.driveSearch.value = ''; // clear any search queries
+            els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4 flex items-center justify-center gap-2"><svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Loading folder...</li>';
+            els.driveLoadMoreContainer.classList.add('hidden');
+            els.driveNavBar.classList.remove('hidden'); // Show navigation bar
+
+            google.script.run
+                .withSuccessHandler(function(response) {
+                    if (response.error) {
+                        els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">' + response.error + '</li>';
+                        return;
+                    }
+
+                    currentDriveFolderId = response.currentFolderId;
+                    driveParentFolderId = response.parentId;
+                    els.driveCurrentFolder.innerText = response.currentFolderName === 'Drive' ? 'Root' : response.currentFolderName;
+
+                    if (driveParentFolderId) {
+                        els.btnDriveUp.classList.remove('opacity-30', 'cursor-not-allowed');
+                        els.btnDriveUp.disabled = false;
+                    } else {
+                        els.btnDriveUp.classList.add('opacity-30', 'cursor-not-allowed');
+                        els.btnDriveUp.disabled = true;
+                    }
+
+                    els.driveFileList.innerHTML = '';
+
+                    if (response.folders.length === 0 && response.files.length === 0) {
+                        els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">Folder is empty or contains no audio files.</li>';
+                        return;
+                    }
+
+                    // Render Folders
+                    response.folders.forEach(function(f) {
+                        const li = document.createElement('li');
+                        li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors";
+                        li.innerHTML = '<div class="flex items-center gap-2 truncate pr-2 flex-grow"><svg class="w-5 h-5 text-yellow-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg><span class="truncate">' + f.name + '</span></div>';
+                        li.onclick = function() { loadDriveContents(f.id); };
+                        els.driveFileList.appendChild(li);
+                    });
+
+                    // Render Files
+                    response.files.forEach(function(f) {
+                        const li = document.createElement('li');
+                        li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors";
+                        li.innerHTML = '<div class="flex items-center gap-2 truncate pr-2 flex-grow"><svg class="w-5 h-5 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="truncate">' + f.name + '</span></div><button class="opacity-0 group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
+                        li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
+                        els.driveFileList.appendChild(li);
+                    });
+
+                })
+                .withFailureHandler(function(error) { els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">Error loading folder.</li>'; })
+                .getDriveContents(folderId);
+        }
+
+        // Global Search logic
         function loadDriveFiles(searchQuery, pageToken) {
+            isDriveSearching = true;
+            els.driveNavBar.classList.add('hidden'); // Hide breadcrumbs in Global Search
+
             if (!pageToken) {
-                els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4 flex items-center justify-center gap-2"><svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Fetching files...</li>';
+                els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4 flex items-center justify-center gap-2"><svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Fetching files globally...</li>';
                 driveNextPageToken = null;
             } else {
                 els.btnDriveLoadMore.innerHTML = '<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Loading...';
@@ -1875,12 +1973,12 @@
                     driveNextPageToken = response.nextPageToken;
 
                     if (files.length === 0 && !pageToken) {
-                        els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">No audio files found.</li>';
+                        els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">No audio files found for this search.</li>';
                     } else {
                         files.forEach(function(f) {
                             const li = document.createElement('li');
                             li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors";
-                            li.innerHTML = '<span class="truncate pr-2 flex-grow">' + f.name + '</span><button class="opacity-0 group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow">Add</button>';
+                            li.innerHTML = '<div class="flex items-center gap-2 truncate pr-2 flex-grow"><svg class="w-5 h-5 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="truncate">' + f.name + '</span></div><button class="opacity-0 group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
                             li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
                             els.driveFileList.appendChild(li);
                         });
@@ -1896,10 +1994,13 @@
 
         function loadSingleDriveFile(fileId, fileName, listItemElement) {
             const btn = listItemElement.querySelector('button');
-            btn.className = "px-3 py-1 bg-green-600 text-white rounded text-xs shadow cursor-default"; btn.innerText = "Downloading...";
+            if(btn) {
+                btn.className = "px-3 py-1 bg-green-600 text-white rounded text-xs shadow cursor-default shrink-0"; 
+                btn.innerText = "Downloading...";
+            }
             google.script.run
                 .withSuccessHandler(function(base64Data) {
-                    btn.innerText = "Added"; btn.classList.replace("bg-green-600", "bg-slate-600");
+                    if (btn) { btn.innerText = "Added"; btn.classList.replace("bg-green-600", "bg-slate-600"); }
                     const byteCharacters = atob(base64Data);
                     const byteNumbers = new Array(byteCharacters.length);
                     for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -1909,7 +2010,8 @@
                     if (currentFileIndex === -1) els.driveModal.classList.add('hidden');
                 })
                 .withFailureHandler(function(error) {
-                    btn.className = "px-3 py-1 bg-red-600 text-white rounded text-xs shadow"; btn.innerText = "Failed"; alert("Error: " + error);
+                    if(btn) { btn.className = "px-3 py-1 bg-red-600 text-white rounded text-xs shadow shrink-0"; btn.innerText = "Failed"; }
+                    alert("Error: " + error);
                 })
                 .downloadDriveFile(fileId);
         }
