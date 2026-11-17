@@ -2,13 +2,16 @@
 
 ![Screenshot of the Audio Reader app interface](image.png)
 
-Audio Reader for my Friends is a lightweight, web-based audio player designed for seamless playback, looping, and memory bank management of your local and Google Drive audio files. 
+Audio Reader for my Friends is a lightweight, web-based audio player designed for seamless playback, looping, memory bank management, and synchronized follower tracks for your local and Google Drive audio files. 
 
 ## Features
 
 **Core Playback & Navigation**
 
 * **Local & Cloud Playback:** Load audio files (MP3, WAV, OGG) via local file upload, drag-and-drop, or browse and download directly from Google Drive with built-in search and pagination.
+
+
+* **Synchronized Follower Tracks:** Select secondary tracks from your playlist to act as synchronous followers. These tracks perfectly mirror the main lead track's commands (play, pause, seek, A-B loop jumps, and speed changes) with built-in drift correction, while allowing independent volume control for each follower.
 
 
 * **Playback Controls:** Play, pause, skip to next/previous tracks, rewind 5 seconds, and fast-forward 5 seconds.
