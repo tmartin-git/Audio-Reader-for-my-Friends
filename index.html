@@ -483,7 +483,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.2.0 &bull; November 2026
+                Version 2.2.1 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -987,7 +987,7 @@
                     break;
                 case 'ArrowUp': // Start of track
                     e.preventDefault();
-                    els.audio.currentTime = 0;
+                    els.audio.currentTime = loopA !== null ? loopA : 0;
                     break;
                 case 'ArrowDown': // End of track
                     e.preventDefault();
@@ -1685,8 +1685,11 @@
             else els.btnPlaylistRepeat.classList.replace('text-blue-400', 'text-slate-500');
         };
         els.playBtn.onclick = () => { if (!els.audio.src) return; els.audio.paused ? els.audio.play() : els.audio.pause(); };
-        els.btnPrev.onclick = () => els.audio.currentTime = 0;
-        els.btnBack.onclick = () => els.audio.currentTime = Math.max(0, els.audio.currentTime - 5);
+        
+        // Skip to Begin / Rewind logic fixed here to respect loopA
+        els.btnPrev.onclick = () => els.audio.currentTime = loopA !== null ? loopA : 0;
+        els.btnBack.onclick = () => els.audio.currentTime = Math.max(loopA !== null ? loopA : 0, els.audio.currentTime - 5);
+        
         els.btnFwd.onclick = () => els.audio.currentTime = Math.min(els.audio.duration, els.audio.currentTime + 5);
         els.btnNext.onclick = () => playNextValidTrack(currentFileIndex + 1);
         els.volSlider.addEventListener('input', (e) => { els.audio.volume = e.target.value; localStorage.setItem('mp3_vol', e.target.value); });
