@@ -399,7 +399,16 @@
         <div class="mt-2 border-t border-slate-800 pt-4">
             <div class="flex items-center justify-between mb-2 px-1">
                 <h3 class="text-sm font-semibold text-slate-400">Playlist</h3>
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3">
+                    
+                    <!-- NEW: Clear Playlist Button with Inline Confirmation -->
+                    <button id="btn-clear-playlist" class="flex items-center gap-1 p-1 text-slate-500 hover:text-red-400 transition-all rounded text-xs font-semibold" title="Clear Playlist">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        <span class="hidden tracking-wide" id="clear-playlist-text">Confirm?</span>
+                    </button>
+
+                    <div class="h-4 w-px bg-slate-700 mx-1"></div> <!-- Divider -->
+
                     <label class="text-xs text-slate-400 flex items-center gap-1 cursor-pointer" title="Auto-play next track when current track ends">
                         <input type="checkbox" id="chain-tracks" class="rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500" checked>
                         Chain Tracks
@@ -483,7 +492,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.2.1 &bull; November 2026
+                Version 2.3.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -617,6 +626,10 @@
 
             btnExportPlaylist: document.getElementById('btn-export-playlist'),
             btnImportPlaylist: document.getElementById('btn-import-playlist'),
+            
+            // Add these near the other playlist DOM elements
+            btnClearPlaylist: document.getElementById('btn-clear-playlist'),
+            clearPlaylistText: document.getElementById('clear-playlist-text'),
         };
 
         // Ensure pitch remains normal when speeding up/down
@@ -1535,6 +1548,67 @@
                 currentFileIndex = -1; els.audio.pause(); els.audio.src = ''; els.title.innerText = 'No file loaded'; drawEmptyWaveform(); playNextValidTrack(index);
             } else if (currentFileIndex > index) currentFileIndex--;
             renderPlaylist(); saveStateToDB();
+        };
+
+        // --- Clear Playlist Feature (Option A) ---
+        let clearPlaylistTimeout = null;
+        let isConfirmingClear = false;
+
+        els.btnClearPlaylist.onclick = () => {
+            if (playlistFiles.length === 0) return; // Do nothing if already empty
+
+            if (!isConfirmingClear) {
+                // Step 1: Request confirmation
+                isConfirmingClear = true;
+                els.btnClearPlaylist.classList.replace('text-slate-500', 'text-red-500');
+                els.btnClearPlaylist.classList.add('bg-red-500/10', 'px-2');
+                els.clearPlaylistText.classList.remove('hidden');
+                
+                clearPlaylistTimeout = setTimeout(() => {
+                    // Revert UI if no second click happens within 3 seconds
+                    isConfirmingClear = false;
+                    els.btnClearPlaylist.classList.replace('text-red-500', 'text-slate-500');
+                    els.btnClearPlaylist.classList.remove('bg-red-500/10', 'px-2');
+                    els.clearPlaylistText.classList.add('hidden');
+                }, 3000);
+            } else {
+                // Step 2: Second click registered, execute Clear
+                clearTimeout(clearPlaylistTimeout);
+                isConfirmingClear = false;
+                
+                // Revert button UI
+                els.btnClearPlaylist.classList.replace('text-red-500', 'text-slate-500');
+                els.btnClearPlaylist.classList.remove('bg-red-500/10', 'px-2');
+                els.clearPlaylistText.classList.add('hidden');
+
+                // Halt main playback
+                els.audio.pause();
+                els.audio.src = '';
+                
+                // Halt and wipe all follower tracks
+                followers.forEach(f => {
+                    f.audio.pause();
+                    f.audio.src = '';
+                });
+                followers = [];
+                renderFollowers(); // Hides the follower container
+                
+                // Wipe playlist state
+                playlistFiles = [];
+                currentFileIndex = -1;
+                
+                // Reset main UI components
+                els.title.innerText = 'No file loaded';
+                drawEmptyWaveform();
+                loopA = null; 
+                loopB = null;
+                updateDualSliderUI();
+                renderPlaylist();
+                updatePlayState();
+                
+                // Persist the empty state to IndexedDB
+                saveStateToDB();
+            }
         };
 
         function playNextValidTrack(startIndex) {
