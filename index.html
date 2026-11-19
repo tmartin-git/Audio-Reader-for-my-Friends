@@ -248,11 +248,17 @@
             <div id="waveform-selection" class="absolute top-0 bottom-0 bg-blue-500/20 border-l border-r border-blue-500/50 pointer-events-none hidden"></div>
             <div id="waveform-playhead" class="absolute top-0 bottom-0 w-0.5 bg-green-400 z-30 pointer-events-none hidden shadow-[0_0_8px_rgba(74,222,128,0.8)]"></div>
             
-            <div id="loading-indicator" class="absolute inset-0 flex items-center justify-center bg-slate-950/80 hidden">
+            <div id="loading-indicator" class="absolute inset-0 flex items-center justify-center bg-slate-950/80 hidden z-40 backdrop-blur-sm">
                 <span class="text-slate-400 text-sm flex items-center gap-2">
                     <svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     Decoding Audio...
                 </span>
+            </div>
+            
+            <!-- New Loop Pause Countdown Overlay -->
+            <div id="loop-pause-indicator" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 hidden z-40 backdrop-blur-sm transition-opacity">
+                <svg class="animate-spin h-8 w-8 text-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span class="text-blue-400 text-sm font-semibold tracking-wider">Looping in <span id="loop-countdown" class="font-mono text-white text-lg ml-1">0.0</span>s</span>
             </div>
         </div>
 
@@ -492,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.3.0 &bull; November 2026
+                Version 2.5.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -592,6 +598,9 @@
             playhead: document.getElementById('waveform-playhead'),
             loading: document.getElementById('loading-indicator'),
             
+            loopPauseIndicator: document.getElementById('loop-pause-indicator'),
+            loopCountdown: document.getElementById('loop-countdown'),
+            
             dropZone: document.getElementById('drop-zone'),
             dropOverlay: document.getElementById('drop-overlay'),
             fileUpload: document.getElementById('file-upload'),
@@ -643,6 +652,7 @@
         let loopA = null;
         let loopB = null;
         let isLoopPausing = false;
+        let loopPauseInterval = null;
         let peaks = [];
         let ignoreSliderInput = false;
         
@@ -668,6 +678,19 @@
         // Global Pinning State
         let pinnedBanks = [false, false, false];
         let globalMemoryBanks = [null, null, null];
+
+        // --- Core Helper Functions ---
+        window.clearLoopPause = function() {
+            if (loopPauseInterval) {
+                clearInterval(loopPauseInterval);
+                loopPauseInterval = null;
+            }
+            if (isLoopPausing) {
+                isLoopPausing = false;
+                els.loopPauseIndicator.classList.add('hidden');
+                updatePlayState();
+            }
+        };
 
         // --- Follower Tracks Core Logic ---
         window.addFollower = function(index) {
@@ -780,6 +803,7 @@
 
         // --- Lead Audio Event Synchronization with Followers ---
         els.audio.addEventListener('play', () => {
+            clearLoopPause();
             followers.forEach(f => {
                 f.audio.currentTime = els.audio.currentTime;
                 f.audio.play().catch(e => console.log(e));
@@ -792,6 +816,10 @@
             updatePlayState();
         });
         
+        els.audio.addEventListener('seeking', () => {
+            clearLoopPause();
+        });
+
         els.audio.addEventListener('seeked', () => {
             followers.forEach(f => {
                 f.audio.currentTime = els.audio.currentTime;
@@ -1257,9 +1285,13 @@
                             
                             updateMemoryBankUI();
                             
-                            btn.classList.remove('flash-led', 'flash-led-amber');
-                            void btn.offsetWidth;
-                            btn.classList.add(pinnedBanks[idx] ? 'flash-led-amber' : 'flash-led');
+                            // Flash the corresponding UI LED to confirm save
+                            const btn = document.querySelector(`.memory-bank[data-bank="${bankIndex}"]`);
+                            if (btn) {
+                                btn.classList.remove('flash-led', 'flash-led-amber');
+                                void btn.offsetWidth; // Trigger reflow to restart animation
+                                btn.classList.add(pinnedBanks[idx] ? 'flash-led-amber' : 'flash-led');
+                            }
                         }
                     }, 600);
                 };
@@ -1582,6 +1614,7 @@
                 els.clearPlaylistText.classList.add('hidden');
 
                 // Halt main playback
+                clearLoopPause();
                 els.audio.pause();
                 els.audio.src = '';
                 
@@ -1626,6 +1659,8 @@
         async function playTrack(index, autoPlay = true) {
             if (index < 0 || index >= playlistFiles.length || playlistFiles[index].disabled) return;
             
+            clearLoopPause();
+
             // Save the current A-B selection to the active track in memory before switching
             if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
                 playlistFiles[currentFileIndex].loopA = loopA;
@@ -1719,7 +1754,21 @@
                     const pauseTime = parseInt(els.loopPause.value) * 1000;
                     if (pauseTime > 0) {
                         isLoopPausing = true; els.audio.pause();
-                        setTimeout(() => { els.audio.currentTime = loopA; els.audio.play(); isLoopPausing = false; }, pauseTime);
+                        
+                        els.loopPauseIndicator.classList.remove('hidden');
+                        let timeLeft = pauseTime;
+                        els.loopCountdown.innerText = (timeLeft / 1000).toFixed(1);
+                        
+                        loopPauseInterval = setInterval(() => {
+                            timeLeft -= 100;
+                            if (timeLeft <= 0) {
+                                clearLoopPause();
+                                els.audio.currentTime = loopA;
+                                els.audio.play().catch(e => console.log(e));
+                            } else {
+                                els.loopCountdown.innerText = (timeLeft / 1000).toFixed(1);
+                            }
+                        }, 100);
                     } else { els.audio.currentTime = loopA; }
                 } else {
                     // Play next track if chain tracks is enabled
@@ -1807,7 +1856,10 @@
             if (type === 'B' && loopB !== null) { loopB = Math.min(els.audio.duration, loopB + amt); if (loopA !== null) loopB = Math.max(loopB, loopA + 0.1); els.audio.currentTime = loopB; }
             updateDualSliderUI(); saveStateToDB();
         };
-        function clearLoop() { loopA = null; loopB = null; if(els.audio.duration) els.sliderB.value = els.audio.duration; els.sliderA.value = 0; updateDualSliderUI(); saveStateToDB(); }
+        function clearLoop() { 
+            clearLoopPause();
+            loopA = null; loopB = null; if(els.audio.duration) els.sliderB.value = els.audio.duration; els.sliderA.value = 0; updateDualSliderUI(); saveStateToDB(); 
+        }
         els.btnClearLoop.onclick = clearLoop;
 
         function handleTimeInput(e, type) {
