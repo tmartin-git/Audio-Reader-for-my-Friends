@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.5.1 &bull; November 2026
+                Version 2.5.2 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -747,6 +747,15 @@
             audioObj.preservesPitch = true;
             audioObj.volume = 1.0;
             audioObj.playbackRate = els.audio.playbackRate;
+            
+            // --- iOS Audio Unlock ---
+            // Safari/iOS requires playback initialization directly during a user interaction
+            const unlockPromise = audioObj.play();
+            if (unlockPromise !== undefined) {
+                unlockPromise.then(() => {
+                    if (!wasPlaying) audioObj.pause();
+                }).catch(() => {});
+            }
 
             let fGainNode = null;
             let fSourceNode = null;
@@ -1803,7 +1812,10 @@
             if (!isSyncing && followers.length > 0 && !els.audio.paused) {
                 let needsSync = false;
                 followers.forEach(f => {
-                    if (Math.abs(f.audio.currentTime - cur) > 0.15) {
+                    // Fix iOS toggle bug: Only attempt sync if the follower is actually playing
+                    // (not blocked by autoplay policies) and has data buffered (readyState >= 3).
+                    // Increased tolerance to 0.3s to prevent micro-stutters on mobile.
+                    if (!f.audio.paused && f.audio.readyState >= 3 && Math.abs(f.audio.currentTime - cur) > 0.3) {
                         needsSync = true;
                     }
                 });
