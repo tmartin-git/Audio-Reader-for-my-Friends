@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.5.0 &bull; November 2026
+                Version 2.5.1 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -644,6 +644,47 @@
         // Ensure pitch remains normal when speeding up/down
         els.audio.preservesPitch = true; 
 
+        // --- Web Audio API Gain Routing (Required for iOS/iPhone software volume control) ---
+        let sharedAudioCtx = null;
+        let mainGainNode = null;
+        let mainSourceNode = null;
+        let currentMasterVolume = 1.0;
+
+        function ensureAudioContext() {
+            if (!sharedAudioCtx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                sharedAudioCtx = new AudioCtx();
+            }
+            if (sharedAudioCtx.state === 'suspended') {
+                sharedAudioCtx.resume().catch(() => {});
+            }
+            if (!mainGainNode) {
+                mainGainNode = sharedAudioCtx.createGain();
+                mainGainNode.gain.value = currentMasterVolume;
+                mainGainNode.connect(sharedAudioCtx.destination);
+                try {
+                    mainSourceNode = sharedAudioCtx.createMediaElementSource(els.audio);
+                    mainSourceNode.connect(mainGainNode);
+                } catch (e) {
+                    console.warn("MediaElementSource setup:", e);
+                }
+            }
+        }
+
+        function setMasterVolume(vol) {
+            currentMasterVolume = parseFloat(vol);
+            if (mainGainNode && sharedAudioCtx) {
+                mainGainNode.gain.setValueAtTime(currentMasterVolume, sharedAudioCtx.currentTime);
+            } else {
+                els.audio.volume = currentMasterVolume;
+            }
+        }
+
+        // Unlock Web Audio Context on first user interaction (required on iOS Safari)
+        ['touchstart', 'mousedown', 'keydown'].forEach(evt => {
+            window.addEventListener(evt, ensureAudioContext, { once: true, passive: true });
+        });
+
         // State variables
         let playlistFiles = [];
         let currentFileIndex = -1;
@@ -701,15 +742,32 @@
             const wasPlaying = !els.audio.paused;
             if (wasPlaying) els.audio.pause(); // Pause main and existing followers
             
+            ensureAudioContext();
             const audioObj = new Audio(URL.createObjectURL(file));
             audioObj.preservesPitch = true;
             audioObj.volume = 1.0;
             audioObj.playbackRate = els.audio.playbackRate;
+
+            let fGainNode = null;
+            let fSourceNode = null;
+            if (sharedAudioCtx) {
+                fGainNode = sharedAudioCtx.createGain();
+                fGainNode.gain.value = 1.0;
+                fGainNode.connect(sharedAudioCtx.destination);
+                try {
+                    fSourceNode = sharedAudioCtx.createMediaElementSource(audioObj);
+                    fSourceNode.connect(fGainNode);
+                } catch (e) {
+                    console.warn("Follower MediaElementSource setup:", e);
+                }
+            }
             
             const follower = {
                 id: followerIdCounter++,
                 file: file,
                 audio: audioObj,
+                gainNode: fGainNode,
+                sourceNode: fSourceNode,
                 volume: 1.0
             };
             
@@ -747,6 +805,12 @@
             if (index > -1) {
                 followers[index].audio.pause();
                 followers[index].audio.src = '';
+                if (followers[index].sourceNode) {
+                    try { followers[index].sourceNode.disconnect(); } catch (e) {}
+                }
+                if (followers[index].gainNode) {
+                    try { followers[index].gainNode.disconnect(); } catch (e) {}
+                }
                 followers.splice(index, 1);
                 renderFollowers();
             }
@@ -780,8 +844,13 @@
                 volSlider.value = f.volume;
                 volSlider.className = "standard-slider w-20";
                 volSlider.oninput = (e) => {
+                    ensureAudioContext();
                     f.volume = parseFloat(e.target.value);
-                    f.audio.volume = f.volume;
+                    if (f.gainNode && sharedAudioCtx) {
+                        f.gainNode.gain.setValueAtTime(f.volume, sharedAudioCtx.currentTime);
+                    } else {
+                        f.audio.volume = f.volume;
+                    }
                 };
                 
                 // Remove follower button
@@ -803,6 +872,7 @@
 
         // --- Lead Audio Event Synchronization with Followers ---
         els.audio.addEventListener('play', () => {
+            ensureAudioContext();
             clearLoopPause();
             followers.forEach(f => {
                 f.audio.currentTime = els.audio.currentTime;
@@ -1241,7 +1311,7 @@
             const savedVol = localStorage.getItem('mp3_vol');
             const savedSpeed = localStorage.getItem('mp3_speed');
             if (savedVol !== null) {
-                els.audio.volume = savedVol;
+                setMasterVolume(savedVol);
                 els.volSlider.value = savedVol;
             }
             if (savedSpeed !== null) {
@@ -1622,6 +1692,12 @@
                 followers.forEach(f => {
                     f.audio.pause();
                     f.audio.src = '';
+                    if (f.sourceNode) {
+                        try { f.sourceNode.disconnect(); } catch (e) {}
+                    }
+                    if (f.gainNode) {
+                        try { f.gainNode.disconnect(); } catch (e) {}
+                    }
                 });
                 followers = [];
                 renderFollowers(); // Hides the follower container
@@ -1679,6 +1755,7 @@
             
             els.audio.src = URL.createObjectURL(file);            els.audio.load();
             if (autoPlay) {
+                ensureAudioContext();
                 els.audio.play().catch(e => console.log("Playback blocked until interacted"));
             }
             updatePlayState();
@@ -1807,7 +1884,7 @@
             if (isRepeatPlaylist) els.btnPlaylistRepeat.classList.replace('text-slate-500', 'text-blue-400');
             else els.btnPlaylistRepeat.classList.replace('text-blue-400', 'text-slate-500');
         };
-        els.playBtn.onclick = () => { if (!els.audio.src) return; els.audio.paused ? els.audio.play() : els.audio.pause(); };
+        els.playBtn.onclick = () => { if (!els.audio.src) return; ensureAudioContext(); els.audio.paused ? els.audio.play() : els.audio.pause(); };
         
         // Skip to Begin / Rewind logic fixed here to respect loopA
         els.btnPrev.onclick = () => els.audio.currentTime = loopA !== null ? loopA : 0;
@@ -1815,7 +1892,7 @@
         
         els.btnFwd.onclick = () => els.audio.currentTime = Math.min(els.audio.duration, els.audio.currentTime + 5);
         els.btnNext.onclick = () => playNextValidTrack(currentFileIndex + 1);
-        els.volSlider.addEventListener('input', (e) => { els.audio.volume = e.target.value; localStorage.setItem('mp3_vol', e.target.value); });
+        els.volSlider.addEventListener('input', (e) => { ensureAudioContext(); setMasterVolume(e.target.value); localStorage.setItem('mp3_vol', e.target.value); });
         els.speedSlider.addEventListener('input', (e) => {
             els.audio.playbackRate = e.target.value; els.speedVal.innerText = formatSpeed(e.target.value); localStorage.setItem('mp3_speed', e.target.value);
         });
