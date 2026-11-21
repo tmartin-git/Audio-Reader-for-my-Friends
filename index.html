@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.5.2 &bull; November 2026
+                Version 2.5.3 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -738,6 +738,16 @@
             const file = playlistFiles[index].file;
             if (!file) return;
             
+            // Prevent adding the main track or a duplicate follower
+            if (index === currentFileIndex || followers.some(f => f.file === file)) {
+                const li = els.playlist.children[index];
+                if (li) {
+                    li.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'; // Brief red flash
+                    setTimeout(() => li.style.backgroundColor = '', 300);
+                }
+                return;
+            }
+
             // --- Stop and go synchronization ---
             const wasPlaying = !els.audio.paused;
             if (wasPlaying) els.audio.pause(); // Pause main and existing followers
