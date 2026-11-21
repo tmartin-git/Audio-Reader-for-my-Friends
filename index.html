@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.5.4 &bull; November 2026
+                Version 2.6.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -752,7 +752,6 @@
             if (!playlistFiles[index].disabled) {
                 playlistFiles[index].disabled = true;
                 renderPlaylist();
-                saveStateToDB();
             }
 
             // --- Stop and go synchronization ---
@@ -800,6 +799,7 @@
             followers.push(follower);
             els.chainTracks.checked = false; // Auto-uncheck when follower tracks are used
             renderFollowers();
+            saveStateToDB();
 
             // Wait for audio to be ready, perfectly align, then resume
             const onReady = () => {
@@ -839,7 +839,19 @@
                 }
                 followers.splice(index, 1);
                 renderFollowers();
+                saveStateToDB();
             }
+        };
+
+        window.clearFollowers = function() {
+            followers.forEach(f => {
+                f.audio.pause();
+                f.audio.src = '';
+                if (f.sourceNode) { try { f.sourceNode.disconnect(); } catch (e) {} }
+                if (f.gainNode) { try { f.gainNode.disconnect(); } catch (e) {} }
+            });
+            followers = [];
+            renderFollowers();
         };
 
         function renderFollowers() {
@@ -946,10 +958,11 @@
 
         async function saveStateToDB() {
             try {
-                // Sync current active track's loop points before saving
+                // Sync current active track's loop points and followers before saving
                 if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
                     playlistFiles[currentFileIndex].loopA = loopA;
                     playlistFiles[currentFileIndex].loopB = loopB;
+                    playlistFiles[currentFileIndex].followerNames = followers.map(f => f.file.name);
                 }
                 const db = await openDB();
                 const tx = db.transaction(storeName, "readwrite");
@@ -1004,6 +1017,7 @@
             if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
                 playlistFiles[currentFileIndex].loopA = loopA;
                 playlistFiles[currentFileIndex].loopB = loopB;
+                playlistFiles[currentFileIndex].followerNames = followers.map(f => f.file.name);
             }
             const db = await openDB();
             const tx = db.transaction(storeName, "readwrite");
@@ -1026,6 +1040,7 @@
                 if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
                     playlistFiles[currentFileIndex].loopA = loopA;
                     playlistFiles[currentFileIndex].loopB = loopB;
+                    playlistFiles[currentFileIndex].followerNames = followers.map(f => f.file.name);
                 }
                 
                 els.audio.pause();
@@ -1042,6 +1057,7 @@
                     els.title.innerText = 'No file loaded'; 
                     drawEmptyWaveform();
                     loopA = null; loopB = null;
+                    clearFollowers();
                     updateDualSliderUI();
                 }
                 
@@ -1230,6 +1246,7 @@
                 if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
                     playlistFiles[currentFileIndex].loopA = loopA;
                     playlistFiles[currentFileIndex].loopB = loopB;
+                    playlistFiles[currentFileIndex].followerNames = followers.map(f => f.file.name);
                 }
 
                 const readFileAsDataURL = (file) => {
@@ -1253,6 +1270,7 @@
                             disabled: item.disabled,
                             loopA: item.loopA !== undefined ? item.loopA : null,
                             loopB: item.loopB !== undefined ? item.loopB : null,
+                            followerNames: item.followerNames || [],
                             data: dataURL
                         });
                     }
@@ -1301,7 +1319,8 @@
                                 file: newFile,
                                 disabled: item.disabled || false,
                                 loopA: item.loopA !== undefined ? item.loopA : null,
-                                loopB: item.loopB !== undefined ? item.loopB : null
+                                loopB: item.loopB !== undefined ? item.loopB : null,
+                                followerNames: item.followerNames || []
                             });
                         }
 
@@ -1312,6 +1331,7 @@
                         els.title.innerText = 'No file loaded'; 
                         drawEmptyWaveform();
                         loopA = null; loopB = null;
+                        clearFollowers();
                         updateDualSliderUI();
 
                         renderPlaylist();
@@ -1715,18 +1735,7 @@
                 els.audio.src = '';
                 
                 // Halt and wipe all follower tracks
-                followers.forEach(f => {
-                    f.audio.pause();
-                    f.audio.src = '';
-                    if (f.sourceNode) {
-                        try { f.sourceNode.disconnect(); } catch (e) {}
-                    }
-                    if (f.gainNode) {
-                        try { f.gainNode.disconnect(); } catch (e) {}
-                    }
-                });
-                followers = [];
-                renderFollowers(); // Hides the follower container
+                clearFollowers();
                 
                 // Wipe playlist state
                 playlistFiles = [];
@@ -1763,10 +1772,12 @@
             
             clearLoopPause();
 
-            // Save the current A-B selection to the active track in memory before switching
+            // Save the current A-B selection and active followers to the track in memory before switching
             if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
                 playlistFiles[currentFileIndex].loopA = loopA;
                 playlistFiles[currentFileIndex].loopB = loopB;
+                playlistFiles[currentFileIndex].followerNames = followers.map(f => f.file.name);
+                clearFollowers();
             }
 
             currentFileIndex = index;
@@ -1779,7 +1790,18 @@
             loopA = playlistFiles[index].loopA !== undefined ? playlistFiles[index].loopA : null;
             loopB = playlistFiles[index].loopB !== undefined ? playlistFiles[index].loopB : null;
             
-            els.audio.src = URL.createObjectURL(file);            els.audio.load();
+            els.audio.src = URL.createObjectURL(file);            
+            els.audio.load();
+
+            // Automatically restore the per-track followers saved to this track
+            const savedFollowers = playlistFiles[index].followerNames || [];
+            savedFollowers.forEach(name => {
+                const fIdx = playlistFiles.findIndex(item => item.file.name === name);
+                if (fIdx > -1) {
+                    addFollower(fIdx);
+                }
+            });
+
             if (autoPlay) {
                 ensureAudioContext();
                 els.audio.play().catch(e => console.log("Playback blocked until interacted"));
