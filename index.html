@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.5.3 &bull; November 2026
+                Version 2.5.4 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -746,6 +746,13 @@
                     setTimeout(() => li.style.backgroundColor = '', 300);
                 }
                 return;
+            }
+
+            // Disable the track in the main playlist when set as a follower
+            if (!playlistFiles[index].disabled) {
+                playlistFiles[index].disabled = true;
+                renderPlaylist();
+                saveStateToDB();
             }
 
             // --- Stop and go synchronization ---
