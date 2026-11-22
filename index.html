@@ -2279,7 +2279,7 @@
                     response.files.forEach(function(f) {
                         const li = document.createElement('li');
                         li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors gap-2";
-                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
+                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
                         li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
                         els.driveFileList.appendChild(li);
                     });
@@ -2383,27 +2383,50 @@
                     const channels = audioBuffer.numberOfChannels;
                     const sampleRate = audioBuffer.sampleRate;
                     
+                    // Decode followers
+                    const followerBuffers = [];
+                    for (const f of followers) {
+                        try {
+                            const fBuffer = await sharedAudioCtx.decodeAudioData(await f.file.arrayBuffer());
+                            followerBuffers.push({ buffer: fBuffer, volume: f.volume });
+                        } catch (e) {
+                            console.warn("Could not decode follower for export", e);
+                        }
+                    }
+
                     // Initialize LameJS Encoder (128kbps)
                     const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128); 
                     let mp3Data = [];
                     
-                    // Extract Float32 data
-                    const leftData = audioBuffer.getChannelData(0).subarray(startOffset, endOffset);
-                    const rightData = channels > 1 ? audioBuffer.getChannelData(1).subarray(startOffset, endOffset) : leftData;
+                    const mainLeft = audioBuffer.getChannelData(0);
+                    const mainRight = channels > 1 ? audioBuffer.getChannelData(1) : mainLeft;
                     
                     const sampleBlockSize = 1152; 
                     
-                    // Convert Float32 to Int16 and Encode in blocks
+                    // Mix followers, Convert Float32 to Int16, and Encode in blocks
                     for (let i = 0; i < frameCount; i += sampleBlockSize) {
-                        const leftChunk = leftData.subarray(i, i + sampleBlockSize);
-                        const rightChunk = rightData.subarray(i, i + sampleBlockSize);
+                        const chunkLen = Math.min(sampleBlockSize, frameCount - i);
+                        const leftInt16 = new Int16Array(chunkLen);
+                        const rightInt16 = new Int16Array(chunkLen);
                         
-                        const leftInt16 = new Int16Array(leftChunk.length);
-                        const rightInt16 = new Int16Array(rightChunk.length);
-                        
-                        for (let j = 0; j < leftChunk.length; j++) {
-                            leftInt16[j] = leftChunk[j] < 0 ? leftChunk[j] * 32768 : leftChunk[j] * 32767;
-                            rightInt16[j] = rightChunk[j] < 0 ? rightChunk[j] * 32768 : rightChunk[j] * 32767;
+                        for (let j = 0; j < chunkLen; j++) {
+                            const globalIndex = startOffset + i + j;
+                            let lSample = (mainLeft[globalIndex] || 0) * currentMasterVolume;
+                            let rSample = (mainRight[globalIndex] || 0) * currentMasterVolume;
+                            
+                            for (const fb of followerBuffers) {
+                                const fLeft = fb.buffer.getChannelData(0);
+                                const fRight = fb.buffer.numberOfChannels > 1 ? fb.buffer.getChannelData(1) : fLeft;
+                                lSample += (fLeft[globalIndex] || 0) * fb.volume;
+                                rSample += (fRight[globalIndex] || 0) * fb.volume;
+                            }
+                            
+                            // Hard clip to prevent peaking
+                            if (lSample < -1) lSample = -1; else if (lSample > 1) lSample = 1;
+                            if (rSample < -1) rSample = -1; else if (rSample > 1) rSample = 1;
+                            
+                            leftInt16[j] = lSample < 0 ? lSample * 32768 : lSample * 32767;
+                            rightInt16[j] = rSample < 0 ? rSample * 32768 : rSample * 32767;
                         }
                         
                         const mp3buf = mp3encoder.encodeBuffer(leftInt16, rightInt16);
