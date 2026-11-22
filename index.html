@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.6.1 &bull; November 2026
+                Version 2.7.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -1216,7 +1216,15 @@
         // --- Initialization & Local Storage ---
         async function init() {
             if (!isGAS) els.btnDriveModal.classList.add('hidden');
-            
+      
+            // Link physical bluetooth controls to the web app buttons
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.setActionHandler('play', () => { els.audio.play(); });
+                navigator.mediaSession.setActionHandler('pause', () => { els.audio.pause(); });
+                navigator.mediaSession.setActionHandler('previoustrack', () => els.btnPrev.click());
+                navigator.mediaSession.setActionHandler('nexttrack', () => els.btnNext.click());
+            }            
+
             els.canvas.width = els.canvas.clientWidth;
             els.canvas.height = els.canvas.clientHeight;
             drawEmptyWaveform();
@@ -1784,6 +1792,16 @@
             const file = playlistFiles[index].file;
             if (!file) return;
             els.title.innerText = file.name;
+
+            // NEW: Pass metadata to iOS/Bluetooth Media Session
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: file.name.replace(/\.[^/.]+$/, ""), // Uses file name and hides the .mp3 extension
+                    artist: 'Audio Reader',
+                    album: 'My Audio Files' 
+                });
+            }
+            
             renderPlaylist(); 
             
             // Restore the previous A-B selection for the newly selected track
