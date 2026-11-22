@@ -315,7 +315,6 @@
             <div class="flex items-center justify-center gap-3 flex-wrap w-full md:w-auto">
                 <!-- Memory Banks (Presets) -->
                 <div class="flex flex-col items-center justify-center mr-0 sm:mr-2 border-r border-slate-700 pr-0 sm:pr-4 w-full sm:w-auto border-b sm:border-b-0 pb-3 sm:pb-0">
-                    <!-- Changed gap-2 to gap-5 to accommodate the larger touch targets -->
                     <div class="flex items-center gap-5">
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="0"></button>
                         <button class="memory-bank led-empty w-4 h-4 rounded-full border-2 transition-all duration-200 outline-none" data-bank="1"></button>
@@ -496,9 +495,8 @@
                 About Audio Reader
             </h3>
             
-            <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.7.2 &bull; November 2026
+                Version 2.7.7 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -636,7 +634,6 @@
             btnExportPlaylist: document.getElementById('btn-export-playlist'),
             btnImportPlaylist: document.getElementById('btn-import-playlist'),
             
-            // Add these near the other playlist DOM elements
             btnClearPlaylist: document.getElementById('btn-clear-playlist'),
             clearPlaylistText: document.getElementById('clear-playlist-text'),
         };
@@ -703,7 +700,7 @@
         // Synchronous Follower Tracks State
         let followers = [];
         let followerIdCounter = 0;
-        let isSyncing = false; // Added for stop-and-go sync
+        let isSyncingUI = false; 
 
         const isGAS = typeof google !== 'undefined' && google.script && google.script.run;
         let driveNextPageToken = null;
@@ -740,11 +737,6 @@
             
             // Prevent adding the main track or a duplicate follower
             if (index === currentFileIndex || followers.some(f => f.file === file)) {
-                const li = els.playlist.children[index];
-                if (li) {
-                    li.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'; // Brief red flash
-                    setTimeout(() => li.style.backgroundColor = '', 300);
-                }
                 return;
             }
 
@@ -754,27 +746,22 @@
                 renderPlaylist();
             }
 
-            // --- Stop and go synchronization ---
-            const wasPlaying = !els.audio.paused;
-            if (wasPlaying) els.audio.pause(); // Pause main and existing followers
-            
             ensureAudioContext();
+
+            // 1. HARD STOP - Pause main track immediately
+            const wasPlaying = !els.audio.paused;
+            isSyncingUI = true; 
+            els.audio.pause();
+            followers.forEach(f => f.audio.pause());
+            updatePlayState(); // Prevents UI flip-flopping
+
+            // 2. Initialize new follower
             const audioObj = new Audio(URL.createObjectURL(file));
             audioObj.preservesPitch = true;
             audioObj.volume = 1.0;
             audioObj.playbackRate = els.audio.playbackRate;
-            
-            // --- iOS Audio Unlock ---
-            // Safari/iOS requires playback initialization directly during a user interaction
-            const unlockPromise = audioObj.play();
-            if (unlockPromise !== undefined) {
-                unlockPromise.then(() => {
-                    if (!wasPlaying) audioObj.pause();
-                }).catch(() => {});
-            }
 
-            let fGainNode = null;
-            let fSourceNode = null;
+            let fGainNode = null, fSourceNode = null;
             if (sharedAudioCtx) {
                 fGainNode = sharedAudioCtx.createGain();
                 fGainNode.gain.value = 1.0;
@@ -782,9 +769,7 @@
                 try {
                     fSourceNode = sharedAudioCtx.createMediaElementSource(audioObj);
                     fSourceNode.connect(fGainNode);
-                } catch (e) {
-                    console.warn("Follower MediaElementSource setup:", e);
-                }
+                } catch (e) {}
             }
             
             const follower = {
@@ -797,33 +782,57 @@
             };
             
             followers.push(follower);
-            els.chainTracks.checked = false; // Auto-uncheck when follower tracks are used
+            els.chainTracks.checked = false; 
             renderFollowers();
             saveStateToDB();
 
-            // Wait for audio to be ready, perfectly align, then resume
-            const onReady = () => {
-                audioObj.removeEventListener('canplaythrough', onReady);
+            // 3. Kick off load and iOS unlock
+            audioObj.load();
+            const unlock = audioObj.play();
+            if (unlock !== undefined) {
+                unlock.catch(() => {}); // catch AbortError safely
+            }
+
+            const finalizeSync = () => {
+                const targetTime = els.audio.currentTime;
+                
+                // SAFELY align all trackers - ensuring readyState is sufficient prevents fatal iOS crash (InvalidStateError)
+                if (audioObj.readyState >= 1) audioObj.currentTime = targetTime;
+                followers.forEach(f => {
+                    if (f.audio.readyState >= 1) f.audio.currentTime = targetTime;
+                });
+                
                 if (wasPlaying) {
-                    const syncTime = els.audio.currentTime;
-                    followers.forEach(f => f.audio.currentTime = syncTime);
-                    els.audio.play().catch(e => console.log(e));
+                    // Slight timeout gives hardware decoders time to buffer at the new currentTime
+                    setTimeout(() => {
+                        els.audio.play().catch(e => console.log(e));
+                        followers.forEach(f => f.audio.play().catch(e => console.log(e)));
+                        isSyncingUI = false;
+                        updatePlayState();
+                    }, 100);
                 } else {
-                    audioObj.currentTime = els.audio.currentTime;
+                    audioObj.pause();
+                    isSyncingUI = false;
+                    updatePlayState();
                 }
             };
-            
-            audioObj.addEventListener('canplaythrough', onReady);
-            
-            // Fallback timeout to prevent infinite hanging if decoding takes too long
-            setTimeout(() => {
-                audioObj.removeEventListener('canplaythrough', onReady);
-                if (wasPlaying && els.audio.paused) {
-                    const syncTime = els.audio.currentTime;
-                    followers.forEach(f => f.audio.currentTime = syncTime);
-                    els.audio.play().catch(e => console.log(e));
-                }
-            }, 600);
+
+            // Wait for metadata/canplay before assigning currentTime
+            if (audioObj.readyState >= 3) {
+                finalizeSync();
+            } else {
+                const onCanPlay = () => {
+                    audioObj.removeEventListener('canplay', onCanPlay);
+                    finalizeSync();
+                };
+                audioObj.addEventListener('canplay', onCanPlay);
+                
+                // Failsafe timeout prevents the whole UI from freezing indefinitely
+                setTimeout(() => {
+                    audioObj.removeEventListener('canplay', onCanPlay);
+                    finalizeSync();
+                }, 1500); 
+            }
         };
 
         window.removeFollower = function(id) {
@@ -914,7 +923,9 @@
             ensureAudioContext();
             clearLoopPause();
             followers.forEach(f => {
-                f.audio.currentTime = els.audio.currentTime;
+                if (Math.abs(f.audio.currentTime - els.audio.currentTime) > 0.1) {
+                    if (f.audio.readyState >= 1) f.audio.currentTime = els.audio.currentTime;
+                }
                 f.audio.play().catch(e => console.log(e));
             });
             updatePlayState();
@@ -931,7 +942,9 @@
 
         els.audio.addEventListener('seeked', () => {
             followers.forEach(f => {
-                f.audio.currentTime = els.audio.currentTime;
+                if (Math.abs(f.audio.currentTime - els.audio.currentTime) > 0.15) {
+                    if (f.audio.readyState >= 1) f.audio.currentTime = els.audio.currentTime;
+                }
             });
         });
         
@@ -1744,6 +1757,7 @@
 
                 // Halt main playback
                 clearLoopPause();
+                
                 els.audio.pause();
                 els.audio.src = '';
                 
@@ -1784,6 +1798,7 @@
             if (index < 0 || index >= playlistFiles.length || playlistFiles[index].disabled) return;
             
             clearLoopPause();
+            isSyncingUI = false;
 
             // Save the current A-B selection and active followers to the track in memory before switching
             if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
@@ -1870,33 +1885,36 @@
             const percent = (cur / els.audio.duration) * 100;
             els.progressFill.style.width = `${percent}%`; els.playhead.style.left = `${percent}%`;
 
-            // Drift correction for Follower Tracks
-            if (!isSyncing && followers.length > 0 && !els.audio.paused) {
+            // Drift correction for Follower Tracks (SILENT FIX)
+            if (followers.length > 0 && !els.audio.paused && !isSyncingUI) {
                 let needsSync = false;
                 followers.forEach(f => {
-                    // Fix iOS toggle bug: Only attempt sync if the follower is actually playing
-                    // (not blocked by autoplay policies) and has data buffered (readyState >= 3).
-                    // Increased tolerance to 0.3s to prevent micro-stutters on mobile.
-                    if (!f.audio.paused && f.audio.readyState >= 3 && Math.abs(f.audio.currentTime - cur) > 0.3) {
-                        needsSync = true;
+                    if (!f.audio.paused && f.audio.readyState >= 3) {
+                        if (Math.abs(f.audio.currentTime - cur) > 0.30) {
+                            needsSync = true;
+                        }
                     }
                 });
 
                 if (needsSync) {
-                    isSyncing = true;
-                    els.audio.pause(); // Pause all tracks immediately
+                    isSyncingUI = true;
+                    els.audio.pause();
                     
-                    // Brief stop-and-go to perfectly align buffers
+                    const target = els.audio.currentTime;
+                    // Protect iOS from InvalidStateError during background adjustments
+                    followers.forEach(f => {
+                        if(f.audio.readyState >= 1) f.audio.currentTime = target;
+                    });
+
                     setTimeout(() => {
-                        const target = els.audio.currentTime;
-                        followers.forEach(f => f.audio.currentTime = target);
                         els.audio.play().then(() => {
-                            isSyncing = false;
+                            isSyncingUI = false;
+                            updatePlayState();
                         }).catch(e => {
-                            console.log(e);
-                            isSyncing = false;
+                            isSyncingUI = false;
+                            updatePlayState();
                         });
-                    }, 150);
+                    }, 100);
                 }
             }
 
@@ -1945,6 +1963,7 @@
         });
 
         function updatePlayState() {
+            if (isSyncingUI) return; // Prevent flip-flap visually
             if (els.audio.paused) { els.iconPlay.classList.remove('hidden'); els.iconPause.classList.add('hidden'); } 
             else { els.iconPlay.classList.add('hidden'); els.iconPause.classList.remove('hidden'); }
         }
