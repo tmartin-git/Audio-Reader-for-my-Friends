@@ -249,11 +249,15 @@
             <div id="waveform-selection" class="absolute top-0 bottom-0 bg-blue-500/20 border-l border-r border-blue-500/50 pointer-events-none hidden"></div>
             <div id="waveform-playhead" class="absolute top-0 bottom-0 w-0.5 bg-green-400 z-30 pointer-events-none hidden shadow-[0_0_8px_rgba(74,222,128,0.8)]"></div>
             
-            <div id="loading-indicator" class="absolute inset-0 flex items-center justify-center bg-slate-950/80 hidden z-40 backdrop-blur-sm">
+            <div id="loading-indicator" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 hidden z-40 backdrop-blur-sm">
                 <span class="text-slate-400 text-sm flex items-center gap-2">
                     <svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     Decoding Audio...
                 </span>
+                <!-- NEW: Progress Bar for Exporting -->
+                <div id="export-progress-container" class="w-64 h-2 bg-slate-800 rounded-full mt-4 hidden overflow-hidden shadow-inner">
+                    <div id="export-progress-bar" class="h-full bg-blue-500 transition-all duration-100" style="width: 0%"></div>
+                </div>
             </div>
             
             <!-- New Loop Pause Countdown Overlay -->
@@ -501,7 +505,7 @@
             </h3>
             
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.8.0 &bull; November 2026
+                Version 2.8.2 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -563,6 +567,13 @@
     <div id="export-loop-modal" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 sm:p-6 max-w-sm w-full transform transition-all flex flex-col">
             <h3 class="text-lg font-bold text-white mb-2">Export Selection</h3>
+            
+            <!-- NEW: Track Name Input -->
+            <div class="mb-4">
+                <label class="text-xs text-slate-400 mb-1 block">Track Name:</label>
+                <input type="text" id="export-file-name" class="w-full bg-slate-800 text-slate-300 text-sm rounded border border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors" placeholder="Enter track name...">
+            </div>
+
             <p class="text-xs text-slate-400 mb-5">How would you like to save this audio?</p>
             <div class="flex flex-col gap-3">
                 <button id="btn-export-loop-disk" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm font-semibold flex items-center justify-center gap-2">
@@ -664,8 +675,11 @@
             // NEW: Export Loop Elements
             btnExportLoop: document.getElementById('btn-export-loop'),
             exportLoopModal: document.getElementById('export-loop-modal'),
+            exportFileNameInput: document.getElementById('export-file-name'), // NEW
             btnExportLoopDisk: document.getElementById('btn-export-loop-disk'),
             btnExportLoopPlaylist: document.getElementById('btn-export-loop-playlist'),
+            exportProgressContainer: document.getElementById('export-progress-container'),
+            exportProgressBar: document.getElementById('export-progress-bar'),
         };
 
         // Ensure pitch remains normal when speeding up/down
@@ -2355,6 +2369,13 @@
         // --- A-B Loop MP3 Export Logic ---
         els.btnExportLoop.onclick = () => {
             if (currentFileIndex < 0) return;
+            
+            // Propose default name before opening
+            const file = playlistFiles[currentFileIndex].file;
+            const baseName = file.name.replace(/\.[^/.]+$/, "");
+            const defaultName = (loopA !== null || loopB !== null) ? `${baseName}_Loop` : `${baseName}_Export`;
+            els.exportFileNameInput.value = defaultName;
+
             els.exportLoopModal.classList.remove('hidden');
         };
 
@@ -2364,6 +2385,9 @@
             
             els.loading.classList.remove('hidden');
             els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Compiling MP3...';
+
+            if (els.exportProgressContainer) els.exportProgressContainer.classList.remove('hidden');
+            if (els.exportProgressBar) els.exportProgressBar.style.width = '0%';
 
             // Use a short timeout to allow the loading UI to render before blocking the main thread with encoding
             setTimeout(async () => {
@@ -2402,6 +2426,8 @@
                     const mainRight = channels > 1 ? audioBuffer.getChannelData(1) : mainLeft;
                     
                     const sampleBlockSize = 1152; 
+                    const yieldEveryFrames = sampleBlockSize * 200; // Yield every ~5 seconds of audio
+                    let lastYieldFrame = 0;
                     
                     // Mix followers, Convert Float32 to Int16, and Encode in blocks
                     for (let i = 0; i < frameCount; i += sampleBlockSize) {
@@ -2431,14 +2457,32 @@
                         
                         const mp3buf = mp3encoder.encodeBuffer(leftInt16, rightInt16);
                         if (mp3buf.length > 0) mp3Data.push(new Int8Array(mp3buf));
+
+                        // Progress update and yield to main thread to unblock UI
+                        if (i - lastYieldFrame >= yieldEveryFrames || i + sampleBlockSize >= frameCount) {
+                            lastYieldFrame = i;
+                            const percent = Math.min(100, Math.round((i / frameCount) * 100));
+                            if (els.exportProgressBar) els.exportProgressBar.style.width = `${percent}%`;
+                            
+                            // Yield allows the DOM to repaint the progress bar so the user knows it hasn't crashed
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
                     }
                     
                     const mp3buf = mp3encoder.flush();
                     if (mp3buf.length > 0) mp3Data.push(new Int8Array(mp3buf));
                     
                     const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
-                    const baseName = file.name.replace(/\.[^/.]+$/, "");
-                    const exportName = (loopA !== null || loopB !== null) ? `${baseName}_Loop.mp3` : `${baseName}_Export.mp3`;
+                    
+                    // Fetch user's custom name or fallback to default if they cleared it entirely
+                    let exportName = els.exportFileNameInput.value.trim();
+                    if (!exportName) {
+                        const baseName = file.name.replace(/\.[^/.]+$/, "");
+                        exportName = (loopA !== null || loopB !== null) ? `${baseName}_Loop` : `${baseName}_Export`;
+                    }
+                    if (!exportName.toLowerCase().endsWith('.mp3')) {
+                        exportName += '.mp3';
+                    }
 
                     if (destination === 'disk') {
                         const url = URL.createObjectURL(blob);
@@ -2458,6 +2502,7 @@
                     console.error("Export error:", err);
                     alert("Failed to export loop segment. Check console for details.");
                 } finally {
+                    if (els.exportProgressContainer) els.exportProgressContainer.classList.add('hidden');
                     els.loading.classList.add('hidden');
                     els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Decoding Audio...';
                 }
