@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.7.0 &bull; November 2026
+                Version 2.7.1 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -1801,7 +1801,7 @@
                     album: 'My Audio Files' 
                 });
             }
-            
+
             renderPlaylist(); 
             
             // Restore the previous A-B selection for the newly selected track
@@ -2053,8 +2053,8 @@
             els.loading.classList.remove('hidden');
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                ensureAudioContext();
+                const audioBuffer = await sharedAudioCtx.decodeAudioData(arrayBuffer);
                 const channelData = audioBuffer.getChannelData(0);
                 const step = Math.ceil(channelData.length / 1000);
                 peaks = [];
