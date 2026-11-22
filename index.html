@@ -498,7 +498,7 @@
             
             <!-- Added Version and Date -->
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.7.1 &bull; November 2026
+                Version 2.7.2 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -2209,7 +2209,7 @@
                     response.folders.forEach(function(f) {
                         const li = document.createElement('li');
                         li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors";
-                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg><span class="break-words whitespace-normal leading-tight">' + f.name + '</span></div>';
+                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div>';
                         li.onclick = function() { loadDriveContents(f.id); };
                         els.driveFileList.appendChild(li);
                     });
@@ -2218,7 +2218,7 @@
                     response.files.forEach(function(f) {
                         const li = document.createElement('li');
                         li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors gap-2";
-                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
+                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
                         li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
                         els.driveFileList.appendChild(li);
                     });
@@ -2253,7 +2253,7 @@
                         files.forEach(function(f) {
                             const li = document.createElement('li');
                             li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors gap-2";
-                            li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
+                            li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
                             li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
                             els.driveFileList.appendChild(li);
                         });
