@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Reader for my Friends</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script> <!-- NEW: MP3 Encoder -->
     <style>
         /* Custom range slider resets */
         input[type=range] {
@@ -338,6 +339,10 @@
                     </select>
                 </div>
                 <button id="btn-clear-loop" class="px-3 py-1.5 text-xs text-slate-300 bg-slate-700 hover:bg-slate-600 rounded transition-colors w-full sm:w-auto">Clear</button>
+                
+                <button id="btn-export-loop" class="p-1.5 text-blue-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center" title="Export A-B Selection as MP3" disabled>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                </button>
             </div>
         </div>
 
@@ -496,7 +501,7 @@
             </h3>
             
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.7.7 &bull; November 2026
+                Version 2.8.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -550,6 +555,25 @@
 
             <div class="flex justify-end border-t border-slate-800 pt-4">
                 <button onclick="document.getElementById('playlists-modal').classList.add('hidden')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors font-semibold text-sm">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Loop Modal -->
+    <div id="export-loop-modal" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 sm:p-6 max-w-sm w-full transform transition-all flex flex-col">
+            <h3 class="text-lg font-bold text-white mb-2">Export Selection</h3>
+            <p class="text-xs text-slate-400 mb-5">How would you like to save this A-B loop segment?</p>
+            <div class="flex flex-col gap-3">
+                <button id="btn-export-loop-disk" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm font-semibold flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Save to Disk (MP3)
+                </button>
+                <button id="btn-export-loop-playlist" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors text-sm font-semibold flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Add to Playlist
+                </button>
+                <button onclick="document.getElementById('export-loop-modal').classList.add('hidden')" class="px-4 py-2 mt-2 bg-transparent text-slate-400 hover:text-white rounded transition-colors text-sm font-semibold border border-slate-700 hover:border-slate-500">Cancel</button>
             </div>
         </div>
     </div>
@@ -636,6 +660,12 @@
             
             btnClearPlaylist: document.getElementById('btn-clear-playlist'),
             clearPlaylistText: document.getElementById('clear-playlist-text'),
+
+            // NEW: Export Loop Elements
+            btnExportLoop: document.getElementById('btn-export-loop'),
+            exportLoopModal: document.getElementById('export-loop-modal'),
+            btnExportLoopDisk: document.getElementById('btn-export-loop-disk'),
+            btnExportLoopPlaylist: document.getElementById('btn-export-loop-playlist'),
         };
 
         // Ensure pitch remains normal when speeding up/down
@@ -2006,9 +2036,13 @@
 
             if (loopA !== null || loopB !== null) {
                 els.dualFill.classList.remove('hidden');
+                els.btnExportLoop.disabled = false;
                 els.dualFill.style.left = `${(aVal / els.audio.duration) * 100}%`;
                 els.dualFill.style.right = `${100 - ((bVal / els.audio.duration) * 100)}%`;
-            } else els.dualFill.classList.add('hidden');
+            } else {
+                els.dualFill.classList.add('hidden');
+                els.btnExportLoop.disabled = true;
+            }
 
             if (els.audio.duration && (loopA !== null || loopB !== null)) {
                 els.selection.classList.remove('hidden');
@@ -2314,6 +2348,98 @@
                 })
                 .downloadDriveFile(fileId);
         }
+        
+        // --- A-B Loop MP3 Export Logic ---
+        els.btnExportLoop.onclick = () => {
+            if (currentFileIndex < 0 || (loopA === null && loopB === null)) return;
+            els.exportLoopModal.classList.remove('hidden');
+        };
+
+        async function processAndExportLoop(destination) {
+            els.exportLoopModal.classList.add('hidden');
+            if (currentFileIndex < 0) return;
+            
+            els.loading.classList.remove('hidden');
+            els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Compiling MP3...';
+
+            // Use a short timeout to allow the loading UI to render before blocking the main thread with encoding
+            setTimeout(async () => {
+                try {
+                    const file = playlistFiles[currentFileIndex].file;
+                    const arrayBuffer = await file.arrayBuffer();
+                    ensureAudioContext();
+                    const audioBuffer = await sharedAudioCtx.decodeAudioData(arrayBuffer);
+                    
+                    const start = loopA !== null ? loopA : 0;
+                    const end = loopB !== null ? loopB : audioBuffer.duration;
+                    
+                    const startOffset = Math.floor(start * audioBuffer.sampleRate);
+                    const endOffset = Math.floor(end * audioBuffer.sampleRate);
+                    const frameCount = endOffset - startOffset;
+                    
+                    const channels = audioBuffer.numberOfChannels;
+                    const sampleRate = audioBuffer.sampleRate;
+                    
+                    // Initialize LameJS Encoder (128kbps)
+                    const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128); 
+                    let mp3Data = [];
+                    
+                    // Extract Float32 data
+                    const leftData = audioBuffer.getChannelData(0).subarray(startOffset, endOffset);
+                    const rightData = channels > 1 ? audioBuffer.getChannelData(1).subarray(startOffset, endOffset) : leftData;
+                    
+                    const sampleBlockSize = 1152; 
+                    
+                    // Convert Float32 to Int16 and Encode in blocks
+                    for (let i = 0; i < frameCount; i += sampleBlockSize) {
+                        const leftChunk = leftData.subarray(i, i + sampleBlockSize);
+                        const rightChunk = rightData.subarray(i, i + sampleBlockSize);
+                        
+                        const leftInt16 = new Int16Array(leftChunk.length);
+                        const rightInt16 = new Int16Array(rightChunk.length);
+                        
+                        for (let j = 0; j < leftChunk.length; j++) {
+                            leftInt16[j] = leftChunk[j] < 0 ? leftChunk[j] * 32768 : leftChunk[j] * 32767;
+                            rightInt16[j] = rightChunk[j] < 0 ? rightChunk[j] * 32768 : rightChunk[j] * 32767;
+                        }
+                        
+                        const mp3buf = mp3encoder.encodeBuffer(leftInt16, rightInt16);
+                        if (mp3buf.length > 0) mp3Data.push(new Int8Array(mp3buf));
+                    }
+                    
+                    const mp3buf = mp3encoder.flush();
+                    if (mp3buf.length > 0) mp3Data.push(new Int8Array(mp3buf));
+                    
+                    const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
+                    const baseName = file.name.replace(/\.[^/.]+$/, "");
+                    const exportName = `${baseName}_Loop.mp3`;
+
+                    if (destination === 'disk') {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = exportName;
+                        document.body.appendChild(a);
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        a.remove();
+                    } else if (destination === 'playlist') {
+                        const newFile = new File([blob], exportName, { type: 'audio/mpeg' });
+                        addFilesToPlaylist([newFile]);
+                    }
+                } catch (err) {
+                    console.error("Export error:", err);
+                    alert("Failed to export loop segment. Check console for details.");
+                } finally {
+                    els.loading.classList.add('hidden');
+                    els.loading.querySelector('span').innerHTML = '<svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Decoding Audio...';
+                }
+            }, 50);
+        }
+
+        els.btnExportLoopDisk.onclick = () => processAndExportLoop('disk');
+        els.btnExportLoopPlaylist.onclick = () => processAndExportLoop('playlist');
 
         init();
     </script>
