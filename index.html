@@ -340,7 +340,7 @@
                 </div>
                 <button id="btn-clear-loop" class="px-3 py-1.5 text-xs text-slate-300 bg-slate-700 hover:bg-slate-600 rounded transition-colors w-full sm:w-auto">Clear</button>
                 
-                <button id="btn-export-loop" class="p-1.5 text-blue-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center" title="Export A-B Selection as MP3" disabled>
+                <button id="btn-export-loop" class="p-1.5 text-blue-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center" title="Export Track or Selection as MP3" disabled>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                 </button>
             </div>
@@ -563,7 +563,7 @@
     <div id="export-loop-modal" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 sm:p-6 max-w-sm w-full transform transition-all flex flex-col">
             <h3 class="text-lg font-bold text-white mb-2">Export Selection</h3>
-            <p class="text-xs text-slate-400 mb-5">How would you like to save this A-B loop segment?</p>
+            <p class="text-xs text-slate-400 mb-5">How would you like to save this audio?</p>
             <div class="flex flex-col gap-3">
                 <button id="btn-export-loop-disk" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm font-semibold flex items-center justify-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -2022,7 +2022,12 @@
         window.resetSpeed = function() { els.audio.playbackRate = 1; els.speedSlider.value = 1; els.speedVal.innerText = '1.0x'; localStorage.setItem('mp3_speed', 1); };
 
         function updateDualSliderUI() {
-            if (!els.audio.duration) return;
+            if (!els.audio.duration) {
+                els.btnExportLoop.disabled = true;
+                return;
+            }
+            els.btnExportLoop.disabled = false;
+
             const aVal = loopA !== null ? loopA : 0;
             const bVal = loopB !== null ? loopB : els.audio.duration;
             if (loopA !== null && loopB !== null && loopA > loopB) loopA = loopB - 0.01;
@@ -2036,12 +2041,10 @@
 
             if (loopA !== null || loopB !== null) {
                 els.dualFill.classList.remove('hidden');
-                els.btnExportLoop.disabled = false;
                 els.dualFill.style.left = `${(aVal / els.audio.duration) * 100}%`;
                 els.dualFill.style.right = `${100 - ((bVal / els.audio.duration) * 100)}%`;
             } else {
                 els.dualFill.classList.add('hidden');
-                els.btnExportLoop.disabled = true;
             }
 
             if (els.audio.duration && (loopA !== null || loopB !== null)) {
@@ -2351,7 +2354,7 @@
         
         // --- A-B Loop MP3 Export Logic ---
         els.btnExportLoop.onclick = () => {
-            if (currentFileIndex < 0 || (loopA === null && loopB === null)) return;
+            if (currentFileIndex < 0) return;
             els.exportLoopModal.classList.remove('hidden');
         };
 
@@ -2412,7 +2415,7 @@
                     
                     const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
                     const baseName = file.name.replace(/\.[^/.]+$/, "");
-                    const exportName = `${baseName}_Loop.mp3`;
+                    const exportName = (loopA !== null || loopB !== null) ? `${baseName}_Loop.mp3` : `${baseName}_Export.mp3`;
 
                     if (destination === 'disk') {
                         const url = URL.createObjectURL(blob);
