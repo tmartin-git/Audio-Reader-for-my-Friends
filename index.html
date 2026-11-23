@@ -131,6 +131,14 @@
         /* Playlist item hover */
         .playlist-item:hover { background-color: #334155; }
         .playlist-item.active { background-color: #1e293b; border-left: 4px solid #3b82f6; }
+        @keyframes playlist-error-flash {
+            0%, 100% { background-color: transparent; }
+            25%, 75% { background-color: rgba(239, 68, 68, 0.35); }
+        }
+        .playlist-item.follower-error {
+            animation: playlist-error-flash 0.7s ease-in-out;
+            border-left: 4px solid #ef4444 !important;
+        }
 
         /* Touch-friendly playlist controls */
         @media (hover: hover) {
@@ -775,12 +783,27 @@
         };
 
         // --- Follower Tracks Core Logic ---
+        window.flashPlaylistItemError = function(index) {
+            const items = els.playlist.querySelectorAll('li');
+            const li = items[index];
+            if (!li) return;
+            li.classList.remove('follower-error');
+            void li.offsetWidth; // Trigger reflow to restart animation
+            li.classList.add('follower-error');
+            clearTimeout(li._errorTimer);
+            li._errorTimer = setTimeout(() => {
+                li.classList.remove('follower-error');
+            }, 750);
+        };
+
         window.addFollower = function(index) {
-            const file = playlistFiles[index].file;
-            if (!file) return;
+            const item = playlistFiles[index];
+            if (!item || !item.file) return;
+            const file = item.file;
             
-            // Prevent adding the main track or a duplicate follower
-            if (index === currentFileIndex || followers.some(f => f.file === file)) {
+            // Prevent adding the main track, a disabled track, or a duplicate follower
+            if (index === currentFileIndex || item.disabled || followers.some(f => f.file === file)) {
+                flashPlaylistItemError(index);
                 return;
             }
 
