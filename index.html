@@ -488,7 +488,10 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
                 </button>
                 <span id="drive-current-folder" class="text-sm text-slate-300 font-semibold truncate flex-grow">Root</span>
-                <button id="btn-drive-home" class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors" title="Go to Root">
+                <button id="btn-drive-shared" class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors" title="Shared with me">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                </button>
+                <button id="btn-drive-home" class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors" title="Go to My Drive">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                 </button>
             </div>
@@ -679,6 +682,7 @@
             driveLoadMoreContainer: document.getElementById('drive-load-more-container'),
             driveNavBar: document.getElementById('drive-nav-bar'),
             btnDriveUp: document.getElementById('btn-drive-up'),
+            btnDriveShared: document.getElementById('btn-drive-shared'),
             btnDriveHome: document.getElementById('btn-drive-home'),
             driveCurrentFolder: document.getElementById('drive-current-folder'),
 
@@ -2395,6 +2399,7 @@
             els.btnDriveUp.onclick = () => {
                 if (driveParentFolderId) loadDriveContents(driveParentFolderId);
             };
+            els.btnDriveShared.onclick = () => loadDriveContents('sharedWithMe');
             els.btnDriveHome.onclick = () => loadDriveContents('root');
             
             els.btnDriveModal.onclick = () => {
@@ -2478,18 +2483,26 @@
                 return;
             }
             try {
-                let currentFolderName = 'Root';
+                let currentFolderName = 'My Drive';
                 let parentId = null;
+                let q = '';
 
-                if (folderId !== 'root') {
-                    const metaRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name,parents`);
-                    const meta = await metaRes.json();
-                    currentFolderName = meta.name || 'Folder';
-                    parentId = (meta.parents && meta.parents.length > 0) ? meta.parents[0] : 'root';
+                if (folderId === 'sharedWithMe') {
+                    currentFolderName = 'Shared with me';
+                    parentId = null;
+                    q = `sharedWithMe = true and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType contains 'audio/')`;
+                } else {
+                    if (folderId !== 'root') {
+                        const metaRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name,parents&supportsAllDrives=true`);
+                        const meta = await metaRes.json();
+                        currentFolderName = meta.name || 'Folder';
+                        // If a shared folder has no visible parent, Go Up returns to Shared with me
+                        parentId = (meta.parents && meta.parents.length > 0) ? meta.parents[0] : 'sharedWithMe';
+                    }
+                    q = `'${folderId}' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType contains 'audio/')`;
                 }
 
-                const q = `'${folderId}' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType contains 'audio/')`;
-                const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&orderBy=folder,name&pageSize=100`;
+                const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&orderBy=folder,name&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`;
                 const listRes = await driveApiFetch(listUrl);
                 const data = await listRes.json();
                 const items = data.files || [];
@@ -2560,7 +2573,7 @@
             try {
                 const escaped = searchQuery.replace(/'/g, "\\'");
                 const q = `name contains '${escaped}' and mimeType contains 'audio/' and trashed = false`;
-                let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType)&orderBy=name&pageSize=20`;
+                let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType)&orderBy=name&pageSize=20&supportsAllDrives=true&includeItemsFromAllDrives=true`;
                 if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
                 const res = await driveApiFetch(url);
                 const data = await res.json();
@@ -2603,7 +2616,7 @@
                 return;
             }
             try {
-                const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
+                const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`);
                 const blob = await res.blob();
                 const mimeType = blob.type && blob.type.startsWith('audio/') ? blob.type : 'audio/mpeg';
                 const file = new File([blob], fileName, { type: mimeType });
