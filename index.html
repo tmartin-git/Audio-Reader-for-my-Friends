@@ -6,6 +6,7 @@
     <title>Audio Reader for my Friends</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script> <!-- NEW: MP3 Encoder -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script> <!-- NEW: Google Identity Services for direct Drive access -->
     <style>
         /* Custom range slider resets */
         input[type=range] {
@@ -460,7 +461,20 @@
     <!-- Paginated Google Drive Modal -->
     <div id="drive-modal" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 sm:p-6 max-w-lg w-full transform transition-all flex flex-col max-h-full overflow-hidden">
-            <h3 class="text-xl font-bold text-white mb-2">Google Drive</h3>
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-xl font-bold text-white">Google Drive</h3>
+                <!-- Direct OAuth Sign Out Button (hidden in GAS or when signed out) -->
+                <button id="btn-drive-signout" class="hidden px-2.5 py-1 text-xs font-semibold text-slate-400 hover:text-red-400 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 transition-colors">Sign Out</button>
+            </div>
+
+            <!-- Direct OAuth Sign-In Bar (shown when running outside GAS and not connected) -->
+            <div id="drive-auth-bar" class="mb-3 p-3 bg-slate-950 rounded border border-slate-800 flex flex-col items-center justify-center gap-2 text-center hidden">
+                <p class="text-xs text-slate-400">Sign in with Google to browse and load your Drive audio files directly.</p>
+                <button id="btn-drive-signin" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shadow">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M7.71 3.5L1.15 15l3.43 6 6.55-11.5M9.73 15L16.29 3.5h-6.86L2.87 15M17.43 15.5l-3.42-6h-6.86l6.56 11.5h6.86"/></svg>
+                    Connect Google Drive
+                </button>
+            </div>
             
             <!-- Search & Filter -->
             <div class="mb-2 flex gap-2">
@@ -486,8 +500,8 @@
 
             <!-- File List -->
             <ul id="drive-file-list" class="flex-grow overflow-y-auto mb-4 bg-slate-950 rounded border border-slate-800 p-2 space-y-1 min-h-[200px]">
-                <!-- Fallback text when running locally -->
-                <li class="text-slate-500 text-sm text-center py-4">Connecting to Google Drive requires Apps Script environment.</li>
+                <!-- Fallback text when not yet connected -->
+                <li class="text-slate-500 text-sm text-center py-4">Connect your Google Drive account above to browse your audio files.</li>
             </ul>
 
             <!-- Load More Pagination Button -->
@@ -513,7 +527,7 @@
             </h3>
             
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 2.8.3 &bull; November 2026
+                Version 3.0.0 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -655,6 +669,9 @@
             
             btnDriveModal: document.getElementById('btn-drive-modal'),
             driveModal: document.getElementById('drive-modal'),
+            driveAuthBar: document.getElementById('drive-auth-bar'),
+            btnDriveSignIn: document.getElementById('btn-drive-signin'),
+            btnDriveSignOut: document.getElementById('btn-drive-signout'),
             driveSearch: document.getElementById('drive-search'),
             btnDriveSearch: document.getElementById('btn-drive-search'),
             driveFileList: document.getElementById('drive-file-list'),
@@ -755,6 +772,13 @@
         let isSyncingUI = false; 
 
         const isGAS = typeof google !== 'undefined' && google.script && google.script.run;
+        // --- Direct Google Drive OAuth2 Config (Option A: GIS + Drive REST API v3) ---
+        const GOOGLE_CLIENT_ID = '699123162236-es10li4rnse2krave42u12ng9ef61d1r.apps.googleusercontent.com';
+        const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+        let driveTokenClient = null;
+        let driveAccessToken = null;
+        let driveTokenExpiry = 0;
+
         let driveNextPageToken = null;
         let currentDriveFolderId = 'root';
         let driveParentFolderId = null;
@@ -1296,8 +1320,6 @@
 
         // --- Initialization & Local Storage ---
         async function init() {
-            if (!isGAS) els.btnDriveModal.classList.add('hidden');
-      
             // Link physical bluetooth controls to the web app buttons
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.setActionHandler('play', () => { els.audio.play(); });
@@ -1491,7 +1513,7 @@
                             updateMemoryBankUI();
                             
                             // Flash the corresponding UI LED to confirm save
-                            const btn = document.querySelector(`.memory-bank[data-bank="${bankIndex}"]`);
+                            const btn = document.querySelector(`.memory-bank[data-bank="${idx}"]`);
                             if (btn) {
                                 btn.classList.remove('flash-led', 'flash-led-amber');
                                 void btn.offsetWidth; // Trigger reflow to restart animation
@@ -1557,7 +1579,8 @@
 
             updateMemoryBankUI();
             
-            if (isGAS) setupGoogleDriveIntegration();
+            // Always set up Google Drive integration (supports both GAS and direct OAuth2 REST API)
+            setupGoogleDriveIntegration();
             
             // --- LOAD STATE FROM DB ---
             els.loading.classList.remove('hidden');
@@ -2259,10 +2282,100 @@
             }
         });
 
-        // --- Google Drive Integration Logic (Paginated & Folders) ---
+        // --- Google Drive Integration Logic (GAS + Direct OAuth2 REST API v3) ---
+        function hasValidDriveToken() {
+            return Boolean(driveAccessToken && Date.now() < driveTokenExpiry);
+        }
+
+        function updateDriveAuthUI() {
+            if (isGAS) {
+                els.driveAuthBar.classList.add('hidden');
+                els.btnDriveSignOut.classList.add('hidden');
+                return;
+            }
+            if (hasValidDriveToken()) {
+                els.driveAuthBar.classList.add('hidden');
+                els.btnDriveSignOut.classList.remove('hidden');
+            } else {
+                els.driveAuthBar.classList.remove('hidden');
+                els.btnDriveSignOut.classList.add('hidden');
+                els.driveNavBar.classList.add('hidden');
+                els.driveLoadMoreContainer.classList.add('hidden');
+            }
+        }
+
+        function requestDriveAccessToken(onSuccess) {
+            if (GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID')) {
+                els.driveFileList.innerHTML = '<li class="text-amber-400 text-sm text-center py-4">Please configure your Google OAuth Client ID in index.html first.</li>';
+                return;
+            }
+            if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+                els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">Google Identity Services library failed to load. Check your connection.</li>';
+                return;
+            }
+            if (!driveTokenClient) {
+                driveTokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: GOOGLE_CLIENT_ID,
+                    scope: GOOGLE_DRIVE_SCOPE,
+                    callback: (tokenResponse) => {
+                        if (tokenResponse.error) {
+                            els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">Google sign-in failed: ' + tokenResponse.error + '</li>';
+                            return;
+                        }
+                        driveAccessToken = tokenResponse.access_token;
+                        // Subtract 60s buffer from expires_in
+                        driveTokenExpiry = Date.now() + ((tokenResponse.expires_in || 3600) - 60) * 1000;
+                        updateDriveAuthUI();
+                        if (typeof driveTokenClient._pendingCallback === 'function') {
+                            const cb = driveTokenClient._pendingCallback;
+                            driveTokenClient._pendingCallback = null;
+                            cb();
+                        }
+                    }
+                });
+            }
+            driveTokenClient._pendingCallback = onSuccess;
+            driveTokenClient.requestAccessToken({ prompt: hasValidDriveToken() ? '' : 'consent' });
+        }
+
+        async function driveApiFetch(url) {
+            const res = await fetch(url, {
+                headers: { 'Authorization': 'Bearer ' + driveAccessToken }
+            });
+            if (res.status === 401) {
+                // Token expired or revoked
+                driveAccessToken = null;
+                driveTokenExpiry = 0;
+                updateDriveAuthUI();
+                throw new Error('Session expired. Please reconnect Google Drive.');
+            }
+            if (!res.ok) {
+                throw new Error('Google Drive API error (' + res.status + ')');
+            }
+            return res;
+        }
+
         function setupGoogleDriveIntegration() {
+            // Direct OAuth Sign-In / Sign-Out handlers
+            els.btnDriveSignIn.onclick = () => {
+                requestDriveAccessToken(() => loadDriveContents('root'));
+            };
+            els.btnDriveSignOut.onclick = () => {
+                if (driveAccessToken && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                    google.accounts.oauth2.revoke(driveAccessToken, () => {});
+                }
+                driveAccessToken = null;
+                driveTokenExpiry = 0;
+                updateDriveAuthUI();
+                els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">Signed out. Connect your Google Drive account above to browse your audio files.</li>';
+            };
+
             // Updated Search Action: Either Global Search or Folder View
             els.btnDriveSearch.onclick = () => {
+                if (!isGAS && !hasValidDriveToken()) {
+                    requestDriveAccessToken(() => els.btnDriveSearch.click());
+                    return;
+                }
                 const query = els.driveSearch.value.trim();
                 if (query === '') {
                     loadDriveContents(currentDriveFolderId);
@@ -2284,74 +2397,142 @@
             };
             els.btnDriveHome.onclick = () => loadDriveContents('root');
             
-            const oldDriveBtnClick = els.btnDriveModal.onclick;
-            els.btnDriveModal.onclick = (e) => {
+            els.btnDriveModal.onclick = () => {
                 els.driveModal.classList.remove('hidden');
-                if (els.driveFileList.innerHTML.includes('Connecting to') || els.driveFileList.innerHTML === '') {
-                    loadDriveContents('root');
+                updateDriveAuthUI();
+                if (isGAS) {
+                    if (els.driveFileList.innerHTML.includes('Connect your') || els.driveFileList.innerHTML === '') {
+                        loadDriveContents('root');
+                    }
+                } else if (hasValidDriveToken()) {
+                    if (els.driveFileList.innerHTML.includes('Connect your') || els.driveFileList.innerHTML.includes('Signed out') || els.driveFileList.innerHTML === '') {
+                        loadDriveContents('root');
+                    }
                 }
             };
         }
 
+        function renderDriveFolderResponse(response) {
+            if (response.error) {
+                els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">' + response.error + '</li>';
+                return;
+            }
+
+            currentDriveFolderId = response.currentFolderId;
+            driveParentFolderId = response.parentId;
+            els.driveCurrentFolder.innerText = response.currentFolderName === 'Drive' ? 'Root' : response.currentFolderName;
+
+            if (driveParentFolderId) {
+                els.btnDriveUp.classList.remove('opacity-30', 'cursor-not-allowed');
+                els.btnDriveUp.disabled = false;
+            } else {
+                els.btnDriveUp.classList.add('opacity-30', 'cursor-not-allowed');
+                els.btnDriveUp.disabled = true;
+            }
+
+            els.driveFileList.innerHTML = '';
+
+            if (response.folders.length === 0 && response.files.length === 0) {
+                els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">Folder is empty or contains no audio files.</li>';
+                return;
+            }
+
+            // Render Folders
+            response.folders.forEach(function(f) {
+                const li = document.createElement('li');
+                li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors";
+                li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div>';
+                li.onclick = function() { loadDriveContents(f.id); };
+                els.driveFileList.appendChild(li);
+            });
+
+            // Render Files
+            response.files.forEach(function(f) {
+                const li = document.createElement('li');
+                li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors gap-2";
+                li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
+                li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
+                els.driveFileList.appendChild(li);
+            });
+        }
+
         // Folder Browsing logic
-        function loadDriveContents(folderId) {
+        async function loadDriveContents(folderId) {
             isDriveSearching = false;
             els.driveSearch.value = ''; // clear any search queries
             els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4 flex items-center justify-center gap-2"><svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Loading folder...</li>';
             els.driveLoadMoreContainer.classList.add('hidden');
             els.driveNavBar.classList.remove('hidden'); // Show navigation bar
 
-            google.script.run
-                .withSuccessHandler(function(response) {
-                    if (response.error) {
-                        els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">' + response.error + '</li>';
-                        return;
-                    }
+            if (isGAS) {
+                google.script.run
+                    .withSuccessHandler(renderDriveFolderResponse)
+                    .withFailureHandler(function(error) { els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">Error loading folder.</li>'; })
+                    .getDriveContents(folderId);
+                return;
+            }
 
-                    currentDriveFolderId = response.currentFolderId;
-                    driveParentFolderId = response.parentId;
-                    els.driveCurrentFolder.innerText = response.currentFolderName === 'Drive' ? 'Root' : response.currentFolderName;
+            // Direct Google Drive REST API v3 branch
+            if (!hasValidDriveToken()) {
+                requestDriveAccessToken(() => loadDriveContents(folderId));
+                return;
+            }
+            try {
+                let currentFolderName = 'Root';
+                let parentId = null;
 
-                    if (driveParentFolderId) {
-                        els.btnDriveUp.classList.remove('opacity-30', 'cursor-not-allowed');
-                        els.btnDriveUp.disabled = false;
-                    } else {
-                        els.btnDriveUp.classList.add('opacity-30', 'cursor-not-allowed');
-                        els.btnDriveUp.disabled = true;
-                    }
+                if (folderId !== 'root') {
+                    const metaRes = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name,parents`);
+                    const meta = await metaRes.json();
+                    currentFolderName = meta.name || 'Folder';
+                    parentId = (meta.parents && meta.parents.length > 0) ? meta.parents[0] : 'root';
+                }
 
-                    els.driveFileList.innerHTML = '';
+                const q = `'${folderId}' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType contains 'audio/')`;
+                const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&orderBy=folder,name&pageSize=100`;
+                const listRes = await driveApiFetch(listUrl);
+                const data = await listRes.json();
+                const items = data.files || [];
 
-                    if (response.folders.length === 0 && response.files.length === 0) {
-                        els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">Folder is empty or contains no audio files.</li>';
-                        return;
-                    }
+                const folders = items.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
+                const files = items.filter(f => f.mimeType !== 'application/vnd.google-apps.folder');
 
-                    // Render Folders
-                    response.folders.forEach(function(f) {
-                        const li = document.createElement('li');
-                        li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors";
-                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div>';
-                        li.onclick = function() { loadDriveContents(f.id); };
-                        els.driveFileList.appendChild(li);
-                    });
+                renderDriveFolderResponse({
+                    currentFolderId: folderId,
+                    currentFolderName: currentFolderName,
+                    parentId: parentId,
+                    folders: folders,
+                    files: files
+                });
+            } catch (err) {
+                els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">' + err.message + '</li>';
+            }
+        }
 
-                    // Render Files
-                    response.files.forEach(function(f) {
-                        const li = document.createElement('li');
-                        li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors gap-2";
-                        li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
-                        li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
-                        els.driveFileList.appendChild(li);
-                    });
+        function renderDriveSearchResponse(response, pageToken) {
+            if (!pageToken) els.driveFileList.innerHTML = ''; 
+            const files = response.files || [];
+            driveNextPageToken = response.nextPageToken || null;
 
-                })
-                .withFailureHandler(function(error) { els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">Error loading folder.</li>'; })
-                .getDriveContents(folderId);
+            if (files.length === 0 && !pageToken) {
+                els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">No audio files found for this search.</li>';
+            } else {
+                files.forEach(function(f) {
+                    const li = document.createElement('li');
+                    li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors gap-2";
+                    li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
+                    li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
+                    els.driveFileList.appendChild(li);
+                });
+            }
+            if (driveNextPageToken) {
+                els.driveLoadMoreContainer.classList.remove('hidden');
+                els.btnDriveLoadMore.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg> Load More Files';
+            }
         }
 
         // Global Search logic
-        function loadDriveFiles(searchQuery, pageToken) {
+        async function loadDriveFiles(searchQuery, pageToken) {
             isDriveSearching = true;
             els.driveNavBar.classList.add('hidden'); // Hide breadcrumbs in Global Search
 
@@ -2363,54 +2544,76 @@
             }
             els.driveLoadMoreContainer.classList.add('hidden');
 
-            google.script.run
-                .withSuccessHandler(function(response) {
-                    if (!pageToken) els.driveFileList.innerHTML = ''; 
-                    const files = response.files;
-                    driveNextPageToken = response.nextPageToken;
+            if (isGAS) {
+                google.script.run
+                    .withSuccessHandler(function(response) { renderDriveSearchResponse(response, pageToken); })
+                    .withFailureHandler(function(error) { els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">Error loading files.</li>'; })
+                    .getDriveAudioFiles(searchQuery, pageToken);
+                return;
+            }
 
-                    if (files.length === 0 && !pageToken) {
-                        els.driveFileList.innerHTML = '<li class="text-slate-500 text-sm text-center py-4">No audio files found for this search.</li>';
-                    } else {
-                        files.forEach(function(f) {
-                            const li = document.createElement('li');
-                            li.className = "flex justify-between items-center p-2 hover:bg-slate-800 rounded group cursor-pointer text-sm text-slate-300 border border-transparent hover:border-slate-700 transition-colors gap-2";
-                            li.innerHTML = '<div class="flex items-start gap-2 pr-2 flex-grow min-w-0"><svg class="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg><span class="break-words break-all whitespace-normal leading-tight">' + f.name + '</span></div><button class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-opacity shadow shrink-0">Add</button>';
-                            li.onclick = function() { loadSingleDriveFile(f.id, f.name, li); };
-                            els.driveFileList.appendChild(li);
-                        });
-                    }
-                    if (driveNextPageToken) {
-                        els.driveLoadMoreContainer.classList.remove('hidden');
-                        els.btnDriveLoadMore.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg> Load More Files';
-                    }
-                })
-                .withFailureHandler(function(error) { els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">Error loading files.</li>'; })
-                .getDriveAudioFiles(searchQuery, pageToken);
+            // Direct Google Drive REST API v3 branch
+            if (!hasValidDriveToken()) {
+                requestDriveAccessToken(() => loadDriveFiles(searchQuery, pageToken));
+                return;
+            }
+            try {
+                const escaped = searchQuery.replace(/'/g, "\\'");
+                const q = `name contains '${escaped}' and mimeType contains 'audio/' and trashed = false`;
+                let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType)&orderBy=name&pageSize=20`;
+                if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+                const res = await driveApiFetch(url);
+                const data = await res.json();
+                renderDriveSearchResponse(data, pageToken);
+            } catch (err) {
+                els.driveFileList.innerHTML = '<li class="text-red-400 text-sm text-center py-4">' + err.message + '</li>';
+            }
         }
 
-        function loadSingleDriveFile(fileId, fileName, listItemElement) {
+        async function loadSingleDriveFile(fileId, fileName, listItemElement) {
             const btn = listItemElement.querySelector('button');
             if(btn) {
                 btn.className = "px-3 py-1 bg-green-600 text-white rounded text-xs shadow cursor-default shrink-0"; 
                 btn.innerText = "Downloading...";
             }
-            google.script.run
-                .withSuccessHandler(function(base64Data) {
-                    if (btn) { btn.innerText = "Added"; btn.classList.replace("bg-green-600", "bg-slate-600"); }
-                    const byteCharacters = atob(base64Data);
-                    const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
-                    const blob = new Blob([new Uint8Array(byteNumbers)], {type: 'audio/mpeg'});
-                    const file = new File([blob], fileName, {type: 'audio/mpeg'});
-                    addFilesToPlaylist([file]);
-                    if (currentFileIndex === -1) els.driveModal.classList.add('hidden');
-                })
-                .withFailureHandler(function(error) {
-                    if(btn) { btn.className = "px-3 py-1 bg-red-600 text-white rounded text-xs shadow shrink-0"; btn.innerText = "Failed"; }
-                    alert("Error: " + error);
-                })
-                .downloadDriveFile(fileId);
+
+            if (isGAS) {
+                google.script.run
+                    .withSuccessHandler(function(base64Data) {
+                        if (btn) { btn.innerText = "Added"; btn.classList.replace("bg-green-600", "bg-slate-600"); }
+                        const byteCharacters = atob(base64Data);
+                        const byteNumbers = new Array(byteCharacters.length);
+                        for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+                        const blob = new Blob([new Uint8Array(byteNumbers)], {type: 'audio/mpeg'});
+                        const file = new File([blob], fileName, {type: 'audio/mpeg'});
+                        addFilesToPlaylist([file]);
+                        if (currentFileIndex === -1) els.driveModal.classList.add('hidden');
+                    })
+                    .withFailureHandler(function(error) {
+                        if(btn) { btn.className = "px-3 py-1 bg-red-600 text-white rounded text-xs shadow shrink-0"; btn.innerText = "Failed"; }
+                        alert("Error: " + error);
+                    })
+                    .downloadDriveFile(fileId);
+                return;
+            }
+
+            // Direct Google Drive REST API v3 binary download (no base64 overhead)
+            if (!hasValidDriveToken()) {
+                requestDriveAccessToken(() => loadSingleDriveFile(fileId, fileName, listItemElement));
+                return;
+            }
+            try {
+                const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
+                const blob = await res.blob();
+                const mimeType = blob.type && blob.type.startsWith('audio/') ? blob.type : 'audio/mpeg';
+                const file = new File([blob], fileName, { type: mimeType });
+                if (btn) { btn.innerText = "Added"; btn.classList.replace("bg-green-600", "bg-slate-600"); }
+                addFilesToPlaylist([file]);
+                if (currentFileIndex === -1) els.driveModal.classList.add('hidden');
+            } catch (err) {
+                if(btn) { btn.className = "px-3 py-1 bg-red-600 text-white rounded text-xs shadow shrink-0"; btn.innerText = "Failed"; }
+                alert("Error: " + err.message);
+            }
         }
         
         // --- A-B Loop MP3 Export Logic ---
