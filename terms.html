@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service — Audio Reader for my Friends</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.65;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background-color: #0f172a;
+      color: #e2e8f0;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 0.8rem;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.85rem;
+      color: #f8fafc;
+    }
+    h2 {
+      color: #f8fafc;
+      margin-top: 1.8rem;
+    }
+    a {
+      color: #60a5fa;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    ul {
+      padding-left: 1.4rem;
+    }
+    li {
+      margin-bottom: 0.45rem;
+    }
+    .meta {
+      color: #94a3b8;
+      font-size: 0.9rem;
+    }
+    .box {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 18px 0;
+    }
+    .lang-switch {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .lang-btn {
+      background-color: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .lang-btn:hover {
+      color: #f8fafc;
+      border-color: #60a5fa;
+    }
+    .lang-btn.active {
+      background-color: #2563eb;
+      color: #ffffff;
+      border-color: #2563eb;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ENGLISH VERSION -->
+  <main id="content-en" lang="en">
+    <header>
+      <h1>Terms of Service</h1>
+      <div class="lang-switch" role="group" aria-label="Language switcher">
+        <button type="button" class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button type="button" class="lang-btn" onclick="setLang('fr')">FR</button>
+      </div>
+    </header>
+
+    <p class="meta">
+      Application: <strong>Audio Reader for my Friends</strong> (<a href="https://tmartin-git.github.io/Audio-Reader-for-my-Friends/">https://tmartin-git.github.io/Audio-Reader-for-my-Friends/</a>)<br />
+      Publisher: <strong>Thierry MARTIN</strong> &bull; Last updated: <strong>November 25, 2026</strong>
+    </p>
+
+    <div class="box">
+      <strong>Summary:</strong> <em>Audio Reader for my Friends</em> is a free, open-source (MIT License) client-side web audio player provided "as is". You retain full ownership and responsibility for the audio files you load from your device or Google Drive.
+    </div>
+
+    <h2>1. Acceptance of Terms</h2>
+    <p>
+      By accessing or using <strong>Audio Reader for my Friends</strong> (the "Application"), you agree to be bound by these Terms of Service and our <a href="privacy.html">Privacy Policy</a>. If you do not agree with these terms, please discontinue use of the Application.
+    </p>
+
+    <h2>2. Description of the Service</h2>
+    <p>
+      <strong>Audio Reader for my Friends</strong> is a browser-based audio player that allows users to play local audio files (such as MP3, WAV, and OGG) or audio files accessed from their Google Drive account, configure A-B loops and memory banks, play synchronized follower tracks, organize playlists, and export audio segments locally as MP3 files.
+    </p>
+
+    <h2>3. User Content and Intellectual Property</h2>
+    <ul>
+      <li><strong>Your Audio Files:</strong> You retain all rights and ownership over the audio files you load into the Application. Because processing happens locally in your browser, the Application does not claim any license or ownership over your content.</li>
+      <li><strong>Copyright Responsibility:</strong> You represent and warrant that you have the legal right to access, play, mix, or export any audio files you use with the Application, and that your use complies with applicable copyright and intellectual property laws.</li>
+    </ul>
+
+    <h2>4. Google Drive Integration</h2>
+    <p>
+      If you choose to connect your Google account, you authorize the Application to access your Google Drive in read-only mode (<code>drive.readonly</code>) solely to browse, search, and load your selected audio files into your browser session. Your use of Google Drive through the Application is also subject to Google's Terms of Service.
+    </p>
+
+    <h2>5. Open-Source License</h2>
+    <p>
+      The source code of <strong>Audio Reader for my Friends</strong> is released under the <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener noreferrer">MIT License</a> and is available on <a href="https://github.com/tmartin-git/Audio-Reader-for-my-Friends" target="_blank" rel="noopener noreferrer">GitHub</a>.
+    </p>
+
+    <h2>6. Disclaimer of Warranties</h2>
+    <p>
+      The Application is provided on an <strong>"AS IS"</strong> and <strong>"AS AVAILABLE"</strong> basis, without warranties of any kind, either express or implied, including but not limited to implied warranties of merchantability, fitness for a particular purpose, non-infringement, or uninterrupted availability. Because playlists and presets are stored locally in your browser (<code>IndexedDB</code> and <code>localStorage</code>), you are responsible for backing up any important playlists or audio exports.
+    </p>
+
+    <h2>7. Limitation of Liability</h2>
+    <p>
+      To the maximum extent permitted by applicable law, the publisher (<strong>Thierry MARTIN</strong>) and contributors shall not be liable for any direct, indirect, incidental, special, or consequential damages, including loss of data, playlists, or audio files, arising out of or in connection with the use or inability to use the Application.
+    </p>
+
+    <h2>8. Changes to These Terms</h2>
+    <p>
+      These Terms of Service may be updated from time to time to reflect changes in the Application or legal requirements. Updates will be posted on this page with a revised "Last updated" date.
+    </p>
+
+    <h2>9. Contact</h2>
+    <p>
+      For any questions regarding these Terms of Service, please contact the publisher via the project's GitHub repository:
+      <a href="https://github.com/tmartin-git/Audio-Reader-for-my-Friends" target="_blank" rel="noopener noreferrer">https://github.com/tmartin-git/Audio-Reader-for-my-Friends</a>.
+    </p>
+  </main>
+
+  <!-- FRENCH VERSION -->
+  <main id="content-fr" lang="fr" class="hidden">
+    <header>
+      <h1>Conditions d'utilisation</h1>
+      <div class="lang-switch" role="group" aria-label="Sélecteur de langue">
+        <button type="button" class="lang-btn" onclick="setLang('en')">EN</button>
+        <button type="button" class="lang-btn active" onclick="setLang('fr')">FR</button>
+      </div>
+    </header>
+
+    <p class="meta">
+      Application : <strong>Audio Reader for my Friends</strong> (<a href="https://tmartin-git.github.io/Audio-Reader-for-my-Friends/">https://tmartin-git.github.io/Audio-Reader-for-my-Friends/</a>)<br />
+      Éditeur : <strong>Thierry MARTIN</strong> &bull; Dernière mise à jour : <strong>25 novembre 2026</strong>
+    </p>
+
+    <div class="box">
+      <strong>En bref :</strong> <em>Audio Reader for my Friends</em> est un lecteur audio web gratuit et open source (licence MIT) fourni « en l'état ». Vous conservez l'entière propriété et responsabilité des fichiers audio que vous chargez depuis votre appareil ou Google Drive.
+    </div>
+
+    <h2>1. Acceptation des conditions</h2>
+    <p>
+      En accédant à <strong>Audio Reader for my Friends</strong> (l'« Application ») ou en l'utilisant, vous acceptez les présentes Conditions d'utilisation ainsi que nos <a href="privacy.html">Règles de confidentialité</a>. Si vous n'acceptez pas ces conditions, veuillez ne pas utiliser l'Application.
+    </p>
+
+    <h2>2. Description du service</h2>
+    <p>
+      <strong>Audio Reader for my Friends</strong> est un lecteur audio fonctionnant dans le navigateur permettant de lire des fichiers audio locaux (tels que MP3, WAV et OGG) ou accessibles depuis votre compte Google Drive, de configurer des boucles A-B et banques mémoire, de lire des pistes synchronisées (<em>Follower tracks</em>), d'organiser des playlists et d'exporter localement des extraits audio au format MP3.
+    </p>
+
+    <h2>3. Contenu utilisateur et propriété intellectuelle</h2>
+    <ul>
+      <li><strong>Vos fichiers audio :</strong> Vous conservez l'intégralité des droits et de la propriété sur les fichiers audio que vous chargez dans l'Application. Le traitement s'effectuant localement dans votre navigateur, l'Application ne revendique aucun droit ni licence sur vos contenus.</li>
+      <li><strong>Respect du droit d'auteur :</strong> Vous garantissez disposer des droits nécessaires pour accéder, lire, mixer ou exporter les fichiers audio que vous utilisez avec l'Application, dans le respect des lois applicables en matière de droit d'auteur et de propriété intellectuelle.</li>
+    </ul>
+
+    <h2>4. Intégration Google Drive</h2>
+    <p>
+      Si vous choisissez de connecter votre compte Google, vous autorisez l'Application à accéder à votre espace Google Drive en lecture seule (<code>drive.readonly</code>) uniquement afin de parcourir, rechercher et charger les fichiers audio sélectionnés dans votre session de navigateur. L'utilisation de Google Drive via l'Application est également soumise aux Conditions d'utilisation de Google.
+    </p>
+
+    <h2>5. Licence open source</h2>
+    <p>
+      Le code source de <strong>Audio Reader for my Friends</strong> est publié sous <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener noreferrer">licence MIT</a> et disponible sur <a href="https://github.com/tmartin-git/Audio-Reader-for-my-Friends" target="_blank" rel="noopener noreferrer">GitHub</a>.
+    </p>
+
+    <h2>6. Exclusion de garanties</h2>
+    <p>
+      L'Application est fournie <strong>« EN L'ÉTAT »</strong> et <strong>« SELON DISPONIBILITÉ »</strong>, sans garantie d'aucune sorte, expresse ou implicite, y compris notamment toute garantie implicite de qualité marchande, d'adéquation à un usage particulier, d'absence de contrefaçon ou de disponibilité ininterrompue. Les playlists et préréglages étant stockés localement dans votre navigateur (<code>IndexedDB</code> et <code>localStorage</code>), il vous appartient d'effectuer vos propres sauvegardes de vos playlists ou exports audio importants.
+    </p>
+
+    <h2>7. Limitation de responsabilité</h2>
+    <p>
+      Dans toute la mesure permise par la loi applicable, l'éditeur (<strong>Thierry MARTIN</strong>) et les contributeurs ne sauraient être tenus responsables de tout dommage direct, indirect, accessoire, spécial ou consécutif, y compris toute perte de données, de playlists ou de fichiers audio, résultant de l'utilisation ou de l'impossibilité d'utiliser l'Application.
+    </p>
+
+    <h2>8. Modification des présentes conditions</h2>
+    <p>
+      Les présentes Conditions d'utilisation peuvent être mises à jour périodiquement afin de refléter les évolutions de l'Application ou des exigences légales. Toute mise à jour sera publiée sur cette page avec une nouvelle date de mise à jour.
+    </p>
+
+    <h2>9. Contact</h2>
+    <p>
+      Pour toute question relative aux présentes Conditions d'utilisation, vous pouvez contacter l'éditeur via le dépôt GitHub du projet :
+      <a href="https://github.com/tmartin-git/Audio-Reader-for-my-Friends" target="_blank" rel="noopener noreferrer">https://github.com/tmartin-git/Audio-Reader-for-my-Friends</a>.
+    </p>
+  </main>
+
+  <script>
+    function setLang(lang) {
+      const isFr = lang === 'fr';
+      document.getElementById('content-en').classList.toggle('hidden', isFr);
+      document.getElementById('content-fr').classList.toggle('hidden', !isFr);
+      document.documentElement.lang = isFr ? 'fr' : 'en';
+      document.title = isFr
+        ? "Conditions d'utilisation — Audio Reader for my Friends"
+        : 'Terms of Service — Audio Reader for my Friends';
+    }
+
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const paramLang = params.get('lang');
+      if (paramLang === 'fr' || (!paramLang && navigator.language && navigator.language.toLowerCase().startsWith('fr'))) {
+        setLang('fr');
+      }
+    })();
+  </script>
+</body>
+</html>
