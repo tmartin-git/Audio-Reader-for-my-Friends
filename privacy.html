@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Audio Reader for my Friends</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.65;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background-color: #0f172a;
+      color: #e2e8f0;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 0.8rem;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.85rem;
+      color: #f8fafc;
+    }
+    h2 {
+      color: #f8fafc;
+      margin-top: 1.8rem;
+    }
+    a {
+      color: #60a5fa;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    code {
+      background-color: #1e293b;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    ul {
+      padding-left: 1.4rem;
+    }
+    li {
+      margin-bottom: 0.45rem;
+    }
+    .meta {
+      color: #94a3b8;
+      font-size: 0.9rem;
+    }
+    .box {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 18px 0;
+    }
+    .lang-switch {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .lang-btn {
+      background-color: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .lang-btn:hover {
+      color: #f8fafc;
+      border-color: #60a5fa;
+    }
+    .lang-btn.active {
+      background-color: #2563eb;
+      color: #ffffff;
+      border-color: #2563eb;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ENGLISH VERSION -->
+  <main id="content-en" lang="en">
+    <header>
+      <h1>Privacy Policy</h1>
+      <div class="lang-switch" role="group" aria-label="Language switcher">
+        <button type="button" class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button type="button" class="lang-btn" onclick="setLang('fr')">FR</button>
+      </div>
+    </header>
+
+    <p class="meta">
+      Application: <strong>Audio Reader for my Friends</strong> (<a href="https://tmartin-git.github.io/Audio-Reader-for-my-Friends/">https://tmartin-git.github.io/Audio-Reader-for-my-Friends/</a>)<br />
+      Publisher: <strong>Thierry MARTIN</strong> &bull; Last updated: <strong>November 25, 2026</strong>
+    </p>
+
+    <div class="box">
+      <strong>In short:</strong> <em>Audio Reader for my Friends</em> runs primarily locally in your web browser. Your audio files, playlists, and settings remain on your device, and Google Drive access (when enabled by you) is strictly limited to read-only access to your audio files so they can be loaded into the player.
+    </div>
+
+    <h2>1. Purpose of the Application</h2>
+    <p>
+      <strong>Audio Reader for my Friends</strong> is a web-based audio player designed to play local or Google Drive audio files, set A-B loops, save memory bank presets, play synchronized follower tracks, manage playlists, and export audio segments as MP3 files.
+    </p>
+
+    <h2>2. Data Processed and Local Operation</h2>
+    <p>
+      The application does not operate any backend server of its own to collect, store, or analyze your personal data or audio files:
+    </p>
+    <ul>
+      <li><strong>Audio Files and Processing:</strong> Local audio files (MP3, WAV, OGG) and files imported from Google Drive are decoded and played locally in your browser. Waveform rendering, follower track synchronization, and MP3 encoding (via <code>lamejs</code>) take place directly on your device.</li>
+      <li><strong>Local Browser Storage (IndexedDB &amp; localStorage):</strong> To provide core functionality and restore your session, the following information is stored locally in your browser:
+        <ul>
+          <li><code>IndexedDB</code> (database <code>AudioReaderDB</code>): your current playlist, active track index, saved playlists, and track metadata (enabled/disabled state, A/B loop points, and associated follower track names).</li>
+          <li><code>localStorage</code>: last playback position per file (<code>pos_...</code>), volume, playback speed, per-file A-B loop memory banks (<code>mp3_banks_...</code>), and globally pinned memory banks (<code>mp3_pinned_states</code>, <code>mp3_global_banks</code>).</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h2>3. Use of Google Drive Data (Google APIs)</h2>
+    <p>
+      When using the application outside Google Apps Script and choosing to connect your Google account:
+    </p>
+    <ul>
+      <li><strong>Authentication:</strong> Authentication is handled via <em>Google Identity Services</em> (OAuth 2.0) using the read-only scope <code>https://www.googleapis.com/auth/drive.readonly</code>.</li>
+      <li><strong>Data Access and Use:</strong> This read-only scope is used exclusively to browse your folders and audio files (or search your audio files) in the Drive picker modal and download the selected audio file directly into your browser session to add it to your player/playlist.</li>
+      <li><strong>Storage, Sharing, and Limited Use Compliance:</strong> The application does not transmit your Google Drive files to any external server operated by the publisher, does not use them to train AI/ML models, does not sell or share your data with third parties, and does not use them for advertising. The application's use and transfer of information received from Google APIs adhere to the <em>Google API Services User Data Policy</em>, including the <em>Limited Use</em> requirements.</li>
+      <li><strong>Sign-Out and Revocation:</strong> You can sign out at any time from the <em>Drive</em> modal (via the <em>Sign Out</em> button, which revokes the access token) or revoke the application's access from your Google Account security settings.</li>
+    </ul>
+
+    <h2>4. Third-Party Services and Libraries</h2>
+    <p>
+      The web page loads certain front-end libraries and services from public Content Delivery Networks (CDNs) and third-party providers:
+    </p>
+    <ul>
+      <li><strong>Google Identity Services</strong> (<code>https://accounts.google.com/gsi/client</code>) and <strong>Google Drive API</strong> for authentication and Drive file access.</li>
+      <li><strong>Tailwind CSS</strong> (<code>https://cdn.tailwindcss.com</code>) and <strong>lamejs</strong> (<code>https://cdnjs.cloudflare.com</code>) for styling and client-side MP3 encoding.</li>
+    </ul>
+    <p>
+      When loading these resources or calling Google APIs, your browser may transmit standard technical metadata (such as your IP address and <em>User-Agent</em>) subject to the privacy policies of their respective providers.
+    </p>
+
+    <h2>5. Data Retention and Deletion</h2>
+    <ul>
+      <li><strong>Local Data:</strong> Data saved in <code>IndexedDB</code> and <code>localStorage</code> remains on your device until you delete it (for example by clearing playlists in the app or clearing site data/storage in your browser settings).</li>
+      <li><strong>Google Drive Session Data:</strong> The OAuth access token is kept only in browser memory during your active session (with automatic expiration) and is never written to a remote server.</li>
+    </ul>
+
+    <h2>6. Your Rights</h2>
+    <p>
+      Under applicable data protection laws (including the GDPR), you have the right to access, rectify, erase, or restrict the processing of your personal data. Because application data is stored locally in your browser, you can inspect or erase it directly through your browser controls or contact us with any questions.
+    </p>
+
+    <h2>7. Contact</h2>
+    <p>
+      For any questions regarding this Privacy Policy or <strong>Audio Reader for my Friends</strong>, please contact the publisher (<strong>Thierry MARTIN</strong>) via the project's GitHub repository:
+      <a href="https://github.com/tmartin-git/Audio-Reader-for-my-Friends" target="_blank" rel="noopener noreferrer">https://github.com/tmartin-git/Audio-Reader-for-my-Friends</a>.
+    </p>
+  </main>
+
+  <!-- FRENCH VERSION -->
+  <main id="content-fr" lang="fr" class="hidden">
+    <header>
+      <h1>Règles de confidentialité</h1>
+      <div class="lang-switch" role="group" aria-label="Sélecteur de langue">
+        <button type="button" class="lang-btn" onclick="setLang('en')">EN</button>
+        <button type="button" class="lang-btn active" onclick="setLang('fr')">FR</button>
+      </div>
+    </header>
+
+    <p class="meta">
+      Application : <strong>Audio Reader for my Friends</strong> (<a href="https://tmartin-git.github.io/Audio-Reader-for-my-Friends/">https://tmartin-git.github.io/Audio-Reader-for-my-Friends/</a>)<br />
+      Éditeur : <strong>Thierry MARTIN</strong> &bull; Dernière mise à jour : <strong>25 novembre 2026</strong>
+    </p>
+
+    <div class="box">
+      <strong>En bref :</strong> <em>Audio Reader for my Friends</em> fonctionne principalement en local dans votre navigateur. Vos fichiers audio, playlists et réglages restent sur votre appareil, et l'accès à Google Drive (lorsqu'il est activé par vos soins) est limité à la lecture seule de vos fichiers audio afin de les charger dans le lecteur.
+    </div>
+
+    <h2>1. Objet de l'application</h2>
+    <p>
+      <strong>Audio Reader for my Friends</strong> est une application web de lecture audio permettant de lire des fichiers locaux ou issus de Google Drive, d'utiliser des boucles A-B, des banques mémoire, des pistes synchronisées (<em>Follower tracks</em>), de gérer des playlists et d'exporter des extraits audio au format MP3.
+    </p>
+
+    <h2>2. Données traitées et fonctionnement local</h2>
+    <p>
+      L'application ne dispose d'aucun serveur backend propre pour collecter, héberger ou analyser vos données personnelles ou vos fichiers audio :
+    </p>
+    <ul>
+      <li><strong>Fichiers et traitement audio :</strong> Les fichiers audio ajoutés localement (MP3, WAV, OGG) ou importés depuis Google Drive sont décodés et lus localement dans votre navigateur. La génération des formes d'onde, la synchronisation des pistes <em>Follower</em> et l'encodage MP3 (via <code>lamejs</code>) s'effectuent sur votre appareil.</li>
+      <li><strong>Stockage local dans le navigateur (IndexedDB &amp; localStorage) :</strong> Pour assurer le fonctionnement de l'application et restaurer votre session, les informations suivantes sont enregistrées localement dans votre navigateur :
+        <ul>
+          <li><code>IndexedDB</code> (base <code>AudioReaderDB</code>) : votre playlist courante, l'index de la piste active, vos playlists enregistrées ainsi que les métadonnées associées (état activé/désactivé, points de boucle A/B, noms des pistes <em>Follower</em> associées).</li>
+          <li><code>localStorage</code> : dernière position de lecture par fichier (<code>pos_...</code>), volume, vitesse de lecture, banques mémoire de boucles A-B par fichier (<code>mp3_banks_...</code>) ainsi que les banques mémoire globales épinglées (<code>mp3_pinned_states</code>, <code>mp3_global_banks</code>).</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h2>3. Utilisation des données Google Drive (API Google)</h2>
+    <p>
+      Lorsque vous utilisez l'application en dehors de Google Apps Script et que vous choisissez de connecter votre compte Google :
+    </p>
+    <ul>
+      <li><strong>Authentification :</strong> L'authentification s'effectue via <em>Google Identity Services</em> (OAuth 2.0) avec le périmètre (<em>scope</em>) <code>https://www.googleapis.com/auth/drive.readonly</code>.</li>
+      <li><strong>Accès et utilisation des données :</strong> Ce périmètre en lecture seule est utilisé exclusivement pour lister vos dossiers et fichiers audio (ou effectuer une recherche parmi vos fichiers audio) dans l'interface de sélection, puis télécharger le contenu du fichier audio sélectionné dans votre navigateur afin de l'ajouter à votre lecteur/playlist.</li>
+      <li><strong>Stockage, partage et conformité Limited Use :</strong> L'application ne transfère pas vos fichiers Google Drive vers un serveur externe exploité par l'éditeur, ne les utilise pas pour entraîner des modèles d'IA/ML, ne vend ni ne cède vos données à des tiers, et ne les exploite pas à des fins publicitaires. L'utilisation des informations reçues depuis les API Google respecte les exigences de <em>Google API Services User Data Policy</em>, y compris les règles d'utilisation limitée (<em>Limited Use</em>).</li>
+      <li><strong>Déconnexion et révocation :</strong> Vous pouvez vous déconnecter à tout moment depuis la fenêtre <em>Drive</em> (bouton <em>Sign Out</em>, qui révoque le jeton d'accès) ou révoquer l'accès de l'application depuis les paramètres de sécurité de votre compte Google.</li>
+    </ul>
+
+    <h2>4. Services tiers et bibliothèques externes</h2>
+    <p>
+      La page charge certaines ressources front-end depuis des réseaux de diffusion de contenu (CDN) et services tiers afin de fonctionner :
+    </p>
+    <ul>
+      <li><strong>Google Identity Services</strong> (<code>https://accounts.google.com/gsi/client</code>) et <strong>Google Drive API</strong> pour l'authentification et l'accès aux fichiers Drive.</li>
+      <li><strong>Tailwind CSS</strong> (<code>https://cdn.tailwindcss.com</code>) et <strong>lamejs</strong> (<code>https://cdnjs.cloudflare.com</code>) pour la mise en forme et l'encodage MP3 côté client.</li>
+    </ul>
+    <p>
+      Lors du chargement de ces ressources ou de l'appel aux API Google, votre navigateur peut transmettre des informations techniques standards (telles que votre adresse IP ou l'en-tête <em>User-Agent</em>) conformément aux politiques de confidentialité de leurs fournisseurs respectifs.
+    </p>
+
+    <h2>5. Conservation et suppression des données</h2>
+    <ul>
+      <li><strong>Données locales :</strong> Les données enregistrées dans <code>IndexedDB</code> et <code>localStorage</code> restent sur votre appareil jusqu'à ce que vous les supprimiez (par exemple via le bouton de suppression de playlist, en vidant les données du site dans votre navigateur ou en effaçant le stockage local).</li>
+      <li><strong>Données de session Google Drive :</strong> Le jeton d'accès OAuth est conservé uniquement en mémoire pendant la session active du navigateur (avec expiration automatique) et n'est pas écrit sur un serveur distant.</li>
+    </ul>
+
+    <h2>6. Vos droits</h2>
+    <p>
+      Conformément à la réglementation applicable en matière de protection des données (notamment le RGPD), vous disposez d'un droit d'accès, de rectification, d'effacement et de limitation du traitement des données vous concernant. Puisque les données de l'application sont stockées localement dans votre navigateur, vous pouvez les consulter ou les supprimer directement depuis les outils de votre navigateur ou nous contacter pour toute question.
+    </p>
+
+    <h2>7. Contact</h2>
+    <p>
+      Pour toute question concernant ces règles de confidentialité ou l'application <strong>Audio Reader for my Friends</strong>, vous pouvez contacter l'éditeur (<strong>Thierry MARTIN</strong>) via le dépôt GitHub du projet :
+      <a href="https://github.com/tmartin-git/Audio-Reader-for-my-Friends" target="_blank" rel="noopener noreferrer">https://github.com/tmartin-git/Audio-Reader-for-my-Friends</a>.
+    </p>
+  </main>
+
+  <script>
+    function setLang(lang) {
+      const isFr = lang === 'fr';
+      document.getElementById('content-en').classList.toggle('hidden', isFr);
+      document.getElementById('content-fr').classList.toggle('hidden', !isFr);
+      document.documentElement.lang = isFr ? 'fr' : 'en';
+      document.title = isFr
+        ? 'Règles de confidentialité — Audio Reader for my Friends'
+        : 'Privacy Policy — Audio Reader for my Friends';
+    }
+
+    // Auto-select French if browser language starts with 'fr' and no explicit ?lang=en param is passed
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const paramLang = params.get('lang');
+      if (paramLang === 'fr' || (!paramLang && navigator.language && navigator.language.toLowerCase().startsWith('fr'))) {
+        setLang('fr');
+      }
+    })();
+  </script>
+</body>
+</html>
