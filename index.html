@@ -530,7 +530,7 @@
             </h3>
             
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 3.0.0 &bull; November 2026
+                Version 3.0.1 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -763,6 +763,7 @@
         // State variables
         let playlistFiles = [];
         let currentFileIndex = -1;
+        let currentMainAudioUrl = null;
         let isRepeatTrack = false;
         let isRepeatPlaylist = false;
         let loopA = null;
@@ -829,14 +830,14 @@
             }, 750);
         };
 
-        window.addFollower = function(index) {
+        window.addFollower = function(index, isRestoring = false) {
             const item = playlistFiles[index];
             if (!item || !item.file) return;
             const file = item.file;
             
             // Prevent adding the main track, a disabled track, or a duplicate follower
-            if (index === currentFileIndex || item.disabled || followers.some(f => f.file === file)) {
-                flashPlaylistItemError(index);
+            if (index === currentFileIndex || (!isRestoring && item.disabled) || followers.some(f => f.file === file)) {
+                if (!isRestoring) flashPlaylistItemError(index);
                 return;
             }
 
@@ -856,7 +857,8 @@
             updatePlayState(); // Prevents UI flip-flopping
 
             // 2. Initialize new follower
-            const audioObj = new Audio(URL.createObjectURL(file));
+            const followerUrl = URL.createObjectURL(file);
+            const audioObj = new Audio(followerUrl);
             audioObj.preservesPitch = true;
             audioObj.volume = 1.0;
             audioObj.playbackRate = els.audio.playbackRate;
@@ -876,6 +878,7 @@
                 id: followerIdCounter++,
                 file: file,
                 audio: audioObj,
+                objectUrl: followerUrl,
                 gainNode: fGainNode,
                 sourceNode: fSourceNode,
                 volume: 1.0
@@ -884,7 +887,7 @@
             followers.push(follower);
             els.chainTracks.checked = false; 
             renderFollowers();
-            saveStateToDB();
+            if (!isRestoring) saveStateToDB();
 
             // 3. Kick off load and iOS unlock
             audioObj.load();
@@ -902,7 +905,7 @@
                     if (f.audio.readyState >= 1) f.audio.currentTime = targetTime;
                 });
                 
-                if (wasPlaying) {
+                if (wasPlaying || !els.audio.paused) {
                     // Slight timeout gives hardware decoders time to buffer at the new currentTime
                     setTimeout(() => {
                         els.audio.play().catch(e => console.log(e));
@@ -940,6 +943,9 @@
             if (index > -1) {
                 followers[index].audio.pause();
                 followers[index].audio.src = '';
+                if (followers[index].objectUrl) {
+                    URL.revokeObjectURL(followers[index].objectUrl);
+                }
                 if (followers[index].sourceNode) {
                     try { followers[index].sourceNode.disconnect(); } catch (e) {}
                 }
@@ -956,6 +962,7 @@
             followers.forEach(f => {
                 f.audio.pause();
                 f.audio.src = '';
+                if (f.objectUrl) { URL.revokeObjectURL(f.objectUrl); }
                 if (f.sourceNode) { try { f.sourceNode.disconnect(); } catch (e) {} }
                 if (f.gainNode) { try { f.gainNode.disconnect(); } catch (e) {} }
             });
@@ -1055,6 +1062,25 @@
         // --- Persistence (IndexedDB) ---
         const dbName = "AudioReaderDB";
         const storeName = "playlist";
+        const materializedFiles = new WeakSet();
+
+        // Re-hydrate IndexedDB-backed File handles into in-memory Files so
+        // <audio> byte-range requests and subsequent IndexedDB writes cannot truncate playback
+        async function materializeFileInMemory(file) {
+            if (!file || materializedFiles.has(file)) return file;
+            try {
+                const buffer = await file.arrayBuffer();
+                const memFile = new File([buffer], file.name, {
+                    type: file.type || 'audio/mpeg',
+                    lastModified: file.lastModified
+                });
+                materializedFiles.add(memFile);
+                return memFile;
+            } catch (e) {
+                console.warn("Failed to materialize file in memory:", file.name, e);
+                return file;
+            }
+        }
 
         function openDB() {
             return new Promise((resolve, reject) => {
@@ -1099,7 +1125,7 @@
                 const playlistReq = store.get('playlistFiles');
                 const indexReq = store.get('currentFileIndex');
                 
-                return new Promise((resolve) => {
+                const state = await new Promise((resolve) => {
                     tx.oncomplete = () => {
                         resolve({
                             playlist: playlistReq.result || [],
@@ -1107,6 +1133,13 @@
                         });
                     };
                 });
+
+                for (const item of state.playlist) {
+                    if (item && item.file) {
+                        item.file = await materializeFileInMemory(item.file);
+                    }
+                }
+                return state;
             } catch (e) {
                 console.error("Failed to load state:", e);
                 return { playlist: [], index: -1 };
@@ -1160,6 +1193,11 @@
                 els.audio.pause();
                 
                 playlistFiles = saved[name].files || [];
+                for (const item of playlistFiles) {
+                    if (item && item.file) {
+                        item.file = await materializeFileInMemory(item.file);
+                    }
+                }
                 currentFileIndex = saved[name].index !== undefined ? saved[name].index : -1;
                 
                 renderPlaylist();
@@ -1600,7 +1638,7 @@
                 playlistFiles = savedState.playlist;
                 renderPlaylist();
                 if (savedState.index >= 0 && savedState.index < playlistFiles.length) {
-                    await playTrack(savedState.index, false); // Load track without auto-play
+                    await playTrack(savedState.index, false, false); // Load track without auto-play or redundant DB write
                     // Restore position
                     const savedPos = localStorage.getItem(`pos_${playlistFiles[savedState.index].file.name}`);
                     if (savedPos !== null) {
@@ -1842,7 +1880,7 @@
         window.deleteTrack = function(index) {
             playlistFiles.splice(index, 1);
             if (currentFileIndex === index) {
-                currentFileIndex = -1; els.audio.pause(); els.audio.src = ''; els.title.innerText = 'No file loaded'; drawEmptyWaveform(); playNextValidTrack(index);
+                currentFileIndex = -1; els.audio.pause(); els.audio.src = ''; if (currentMainAudioUrl) { URL.revokeObjectURL(currentMainAudioUrl); currentMainAudioUrl = null; } els.title.innerText = 'No file loaded'; drawEmptyWaveform(); playNextValidTrack(index);
             } else if (currentFileIndex > index) currentFileIndex--;
             renderPlaylist(); saveStateToDB();
         };
@@ -1883,6 +1921,7 @@
                 
                 els.audio.pause();
                 els.audio.src = '';
+                if (currentMainAudioUrl) { URL.revokeObjectURL(currentMainAudioUrl); currentMainAudioUrl = null; }
                 
                 // Halt and wipe all follower tracks
                 clearFollowers();
@@ -1917,7 +1956,7 @@
             els.iconPlay.classList.remove('hidden'); els.iconPause.classList.add('hidden');
         }
 
-        async function playTrack(index, autoPlay = true) {
+        async function playTrack(index, autoPlay = true, saveState = true) {
             if (index < 0 || index >= playlistFiles.length || playlistFiles[index].disabled) return;
             
             clearLoopPause();
@@ -1951,15 +1990,20 @@
             loopA = playlistFiles[index].loopA !== undefined ? playlistFiles[index].loopA : null;
             loopB = playlistFiles[index].loopB !== undefined ? playlistFiles[index].loopB : null;
             
-            els.audio.src = URL.createObjectURL(file);            
+            if (currentMainAudioUrl) {
+                URL.revokeObjectURL(currentMainAudioUrl);
+                currentMainAudioUrl = null;
+            }
+            currentMainAudioUrl = URL.createObjectURL(file);
+            els.audio.src = currentMainAudioUrl;            
             els.audio.load();
 
             // Automatically restore the per-track followers saved to this track
-            const savedFollowers = playlistFiles[index].followerNames || [];
+            const savedFollowers = [...(playlistFiles[index].followerNames || [])];
             savedFollowers.forEach(name => {
                 const fIdx = playlistFiles.findIndex(item => item.file.name === name);
                 if (fIdx > -1) {
-                    addFollower(fIdx);
+                    addFollower(fIdx, true);
                 }
             });
 
@@ -1984,7 +2028,7 @@
 
             updateMemoryBankUI();
             if (autoPlay) els.audio.currentTime = 0;
-            saveStateToDB();
+            if (saveState) saveStateToDB();
             await generateStaticWaveform(file);
         }
 
