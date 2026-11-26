@@ -530,7 +530,7 @@
             </h3>
             
             <p class="text-xs text-slate-500 mb-4 font-mono">
-                Version 3.0.1 &bull; November 2026
+                Version 3.0.2 &bull; November 2026
             </p>
             
             <p class="text-sm text-slate-300 mb-4 leading-relaxed">
@@ -1191,6 +1191,7 @@
                 }
                 
                 els.audio.pause();
+                clearFollowers();
                 
                 playlistFiles = saved[name].files || [];
                 for (const item of playlistFiles) {
@@ -1198,18 +1199,18 @@
                         item.file = await materializeFileInMemory(item.file);
                     }
                 }
-                currentFileIndex = saved[name].index !== undefined ? saved[name].index : -1;
+                const targetIndex = saved[name].index !== undefined ? saved[name].index : -1;
+                currentFileIndex = -1;
                 
                 renderPlaylist();
                 
-                if (currentFileIndex >= 0 && playlistFiles[currentFileIndex]) {
-                    playTrack(currentFileIndex, false);
+                if (targetIndex >= 0 && playlistFiles[targetIndex] && !playlistFiles[targetIndex].disabled) {
+                    playTrack(targetIndex, false, false);
                 } else {
                     els.audio.src = ''; 
                     els.title.innerText = 'No file loaded'; 
                     drawEmptyWaveform();
                     loopA = null; loopB = null;
-                    clearFollowers();
                     updateDualSliderUI();
                 }
                 
